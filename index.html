@@ -61,10 +61,15 @@
     position:sticky;top:0;z-index:40;
   }
   .head-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0 14px}
-  .brand{display:flex;align-items:baseline;gap:10px}
-  .brand h1{
-    font-size:21px;margin:0;letter-spacing:-.02em;font-weight:700;
+  .head-top{display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 0 12px;text-align:center}
+  .apptitle{font-size:30px;line-height:1.1;margin:0;letter-spacing:-.02em;font-weight:700}
+  .head-top .tab{
+    font-family:var(--mono);font-size:12px;color:var(--accent);
+    border:1px solid var(--line-strong);border-radius:999px;padding:2px 10px;background:var(--surface);
   }
+  .head-controls{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:2px}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand h1{font-size:21px;margin:0;letter-spacing:-.02em;font-weight:700}
   .brand .tab{
     font-family:var(--mono);font-size:12px;color:var(--accent);
     border:1px solid var(--line-strong);border-radius:999px;padding:2px 9px;background:var(--surface);
@@ -79,7 +84,7 @@
   .theme-toggle:hover{border-color:var(--accent)}
 
   /* Tabs */
-  nav.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding-bottom:2px;margin-bottom:6px}
+  nav.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding-bottom:2px;margin-bottom:6px;justify-content:center}
   nav.tabs button{
     background:none;border:none;border-bottom:2px solid transparent;
     padding:11px 14px;font:inherit;font-size:14px;color:var(--muted);cursor:pointer;
@@ -337,7 +342,6 @@
     .two,.three,.item-edit .ie-top,.pb-line{grid-template-columns:1fr}
     .txn-head{flex-direction:column}
     .txn-total{text-align:left}
-    table.lines th:nth-child(2),table.lines td:nth-child(2){display:none}
   }
   @media print{
     header.app,nav.tabs,.no-print,footer.app{display:none!important}
@@ -397,12 +401,10 @@
 <div id="appView" style="display:none">
 <header class="app">
   <div class="wrap">
-    <div class="head-inner">
-      <div class="brand">
-        <h1>Split the Tab</h1>
-        <span class="tab" id="appGroupName">group</span>
-      </div>
-      <div class="head-right no-print">
+    <div class="head-top">
+      <h1 class="apptitle">Split the Tab</h1>
+      <span class="tab" id="appGroupName">group</span>
+      <div class="head-controls no-print">
         <div class="cur">
           <span><span class="sync-dot" id="syncDot"></span>Currency</span>
           <input type="text" id="curInput" maxlength="3" value="₱" aria-label="Currency symbol">
@@ -893,9 +895,9 @@ function renderTxns(){
     const arrow=k=>ls&&ls.key===k?(ls.dir>0?"▲":"▼"):"↕";
     const sortedCls=k=>ls&&ls.key===k?"sorted":"";
     const lines=disp.map(r=>`<tr>
-        <td>${esc(r.label)} <span class="ltype ${r.type==="group"?"grp":""}">${r.type==="group"?"shared":"individual"}</span></td>
         <td class="who">${esc(r.who)}</td>
-        <td class="right mono">${money(r.amount)}</td></tr>`).join("")
+        <td class="right mono">${money(r.amount)}</td>
+        <td>${esc(r.label)} <span class="ltype ${r.type==="group"?"grp":""}">${r.type==="group"?"shared":"individual"}</span></td></tr>`).join("")
       ||`<tr><td colspan="3" class="muted" style="padding:14px 18px">No order lines.</td></tr>`;
     const sc=t.serviceCharge,dc=t.discount;
     const st=settleStatus(t);
@@ -923,9 +925,9 @@ function renderTxns(){
       </div>
       <div class="collapsible-body ${collapsed?"hidden":""}">
         <div class="tscroll"><table class="lines"><thead><tr>
-          <th class="sortable ${sortedCls('order')}" data-sort="order" data-t="${t.id}">Order <span class="arrow">${arrow('order')}</span></th>
           <th class="sortable ${sortedCls('for')}" data-sort="for" data-t="${t.id}">For <span class="arrow">${arrow('for')}</span></th>
           <th class="right sortable ${sortedCls('amount')}" data-sort="amount" data-t="${t.id}">Amount <span class="arrow">${arrow('amount')}</span></th>
+          <th class="sortable ${sortedCls('order')}" data-sort="order" data-t="${t.id}">Order <span class="arrow">${arrow('order')}</span></th>
         </tr></thead><tbody>${lines}</tbody></table></div>
         <div class="adjust">
           <div class="grp"><span class="muted">Subtotal</span><span class="v">${money(c.grand)}</span></div>
