@@ -256,9 +256,10 @@
   table.settle th.sortable:hover{color:var(--accent)}
   table.settle th .arrow{font-size:9px;opacity:.5;margin-left:3px}
   table.settle th.sorted .arrow{opacity:1;color:var(--accent)}
-  @media (max-width:760px){
-    table.settle th.bd,table.settle td.bd{display:none}
-  }
+  /* horizontal scroll so wide tables are fully viewable on small screens */
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+  .tscroll table{min-width:680px}
+  .tscroll table.lines{min-width:440px}
   table.settle select{padding:5px 8px;font-size:13px}
   table.settle .modeinput{padding:5px 8px;font-size:13px;width:100%;min-width:110px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);color:var(--ink)}
   table.settle .modeinput:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
@@ -350,6 +351,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
 </head>
 <body>
 
@@ -917,11 +922,11 @@ function renderTxns(){
         </div>
       </div>
       <div class="collapsible-body ${collapsed?"hidden":""}">
-        <table class="lines"><thead><tr>
+        <div class="tscroll"><table class="lines"><thead><tr>
           <th class="sortable ${sortedCls('order')}" data-sort="order" data-t="${t.id}">Order <span class="arrow">${arrow('order')}</span></th>
           <th class="sortable ${sortedCls('for')}" data-sort="for" data-t="${t.id}">For <span class="arrow">${arrow('for')}</span></th>
           <th class="right sortable ${sortedCls('amount')}" data-sort="amount" data-t="${t.id}">Amount <span class="arrow">${arrow('amount')}</span></th>
-        </tr></thead><tbody>${lines}</tbody></table>
+        </tr></thead><tbody>${lines}</tbody></table></div>
         <div class="adjust">
           <div class="grp"><span class="muted">Subtotal</span><span class="v">${money(c.grand)}</span></div>
           <div class="grp"><span class="muted">Service ${sc.mode==="percent"?"("+(Number(sc.value)||0)+"%)":""}</span><span class="v">${money(c.service)}</span></div>
@@ -931,7 +936,7 @@ function renderTxns(){
       </div>
       <div class="settle-foot ${st.cls}">
         <span style="display:flex;align-items:center;gap:8px"><span class="dotmark"></span>${st.label}</span>
-        ${st.cls!=="none"?`<button class="btn sm settle-now no-print" data-settle="${t.id}">Settle now →</button>`:""}
+        ${st.cls!=="none"?`<button class="btn sm settle-now no-print" data-settle="${t.id}">${st.cls==="done"?"View →":"Settle now →"}</button>`:""}
       </div>
     </div>`;
   }).join("");
@@ -1437,10 +1442,10 @@ function renderSettle(){
         <div class="progress"><span>${done}/${debtors.length}</span><span class="bar"><i style="width:${pct}%"></i></span></div>
       </div>
       <div class="collapsible-body ${collapsed?"hidden":""}">
-        <table class="settle">
+        <div class="tscroll"><table class="settle">
           <thead><tr>${colHead}</tr></thead>
           <tbody>${payerRow}${rows}</tbody>
-        </table>
+        </table></div>
       </div>
     </div>`;
   });
