@@ -1,0 +1,1518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Split the Tab — Dine-out Settlement</title>
+<style>
+  :root{
+    --bg:#FBFAF7;
+    --surface:#FFFFFF;
+    --ink:#1F2421;
+    --muted:#6B716C;
+    --faint:#9AA09A;
+    --line:#E8E4DB;
+    --line-strong:#D8D3C7;
+    --accent:#2F7A57;       /* settled / paid green */
+    --accent-soft:#E7F2EC;
+    --pending:#B07515;      /* outstanding amber */
+    --pending-soft:#F7EFDD;
+    --danger:#B23A35;
+    --shadow:0 1px 2px rgba(31,36,33,.05), 0 6px 24px rgba(31,36,33,.06);
+    --mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,Consolas,monospace;
+    --sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --r:10px;
+  }
+  :root[data-theme="dark"]{
+    --bg:#141513;
+    --surface:#1C1E1A;
+    --ink:#ECEAE2;
+    --muted:#A6AA9F;
+    --faint:#767B70;
+    --line:#2A2D27;
+    --line-strong:#3B3F37;
+    --accent:#62BC8D;
+    --accent-soft:#1E2C24;
+    --pending:#D7A655;
+    --pending-soft:#2C2615;
+    --danger:#E37E78;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 24px rgba(0,0,0,.35);
+  }
+  :root[data-theme="dark"] .status.paid{background:#3A3115;color:#E0B560}
+  :root{color-scheme:light}
+  :root[data-theme="dark"]{color-scheme:dark}
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--sans);
+    background:var(--bg);
+    color:var(--ink);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:60px;
+    transition:background .2s,color .2s;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+
+  /* Header */
+  header.app{
+    border-bottom:1px solid var(--line);
+    background:var(--bg);
+    position:sticky;top:0;z-index:40;
+  }
+  .head-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0 14px}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand h1{
+    font-size:21px;margin:0;letter-spacing:-.02em;font-weight:700;
+  }
+  .brand .tab{
+    font-family:var(--mono);font-size:12px;color:var(--accent);
+    border:1px solid var(--line-strong);border-radius:999px;padding:2px 9px;background:var(--surface);
+  }
+  .cur{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .cur input{width:46px;text-align:center;font-family:var(--mono)}
+  .head-right{display:flex;align-items:center;gap:14px}
+  .mini-tools{display:flex;align-items:center;gap:4px}
+  .mini{border:1px solid var(--line-strong);background:var(--surface);border-radius:8px;width:32px;height:32px;font-size:14px;line-height:1;cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .mini:hover{border-color:var(--accent)}
+  .theme-toggle{border:1px solid var(--line-strong);background:var(--surface);border-radius:8px;width:36px;height:34px;font-size:16px;line-height:1;cursor:pointer;color:var(--ink)}
+  .theme-toggle:hover{border-color:var(--accent)}
+
+  /* Tabs */
+  nav.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding-bottom:2px;margin-bottom:6px}
+  nav.tabs button{
+    background:none;border:none;border-bottom:2px solid transparent;
+    padding:11px 14px;font:inherit;font-size:14px;color:var(--muted);cursor:pointer;
+    margin-bottom:-1px;display:flex;align-items:center;gap:7px;
+  }
+  nav.tabs button .count{
+    font-family:var(--mono);font-size:11px;background:var(--line);color:var(--muted);
+    border-radius:999px;padding:1px 7px;
+  }
+  nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+  nav.tabs button[aria-selected="true"] .count{background:var(--accent-soft);color:var(--accent)}
+
+  main{padding-top:40px;padding-bottom:64px}
+  .panel{display:none}
+  .panel.active{display:block}
+
+  /* Generic bits */
+  h2.sec{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:0 0 12px;font-weight:600}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+  .pad{padding:18px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .grow{flex:1 1 auto;min-width:0}
+  .muted{color:var(--muted)}
+  .faint{color:var(--faint)}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .right{text-align:right}
+  .stack>*+*{margin-top:14px}
+
+  label.field{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:500}
+  input[type=text],input[type=number],input[type=date],select{
+    font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line-strong);
+    border-radius:8px;background:var(--surface);color:var(--ink);width:100%;
+  }
+  input:focus,select:focus{outline:2px solid var(--accent-soft);outline-offset:0;border-color:var(--accent)}
+  input[type=number]{font-family:var(--mono)}
+
+  button{cursor:pointer}
+  .btn{
+    font:inherit;font-size:14px;font-weight:600;border-radius:8px;border:1px solid var(--line-strong);
+    background:var(--surface);color:var(--ink);padding:9px 14px;display:inline-flex;align-items:center;gap:7px;
+  }
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#256546;color:#fff}
+  .btn.ghost{border-color:transparent;background:none;color:var(--muted);padding:7px 10px}
+  .btn.ghost:hover{color:var(--ink);background:var(--line)}
+  .btn.sm{padding:6px 10px;font-size:13px}
+  .btn.danger:hover{color:var(--danger);border-color:var(--danger)}
+  .iconbtn{border:none;background:none;color:var(--faint);font-size:16px;line-height:1;padding:4px 6px;border-radius:6px}
+  .iconbtn:hover{color:var(--danger);background:var(--pending-soft)}
+
+  /* member chips */
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{
+    display:inline-flex;align-items:center;gap:8px;background:var(--bg);
+    border:1px solid var(--line-strong);border-radius:999px;padding:5px 6px 5px 13px;font-size:14px;
+  }
+  .chip .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+  .chip .x{cursor:pointer;color:var(--faint);font-size:15px;border:none;background:none;padding:0 4px;border-radius:50%}
+  .chip .x:hover{color:var(--danger)}
+
+  .meal-list{display:flex;flex-wrap:wrap;gap:8px}
+  .meal-tag{display:inline-flex;align-items:center;gap:7px;border:1px dashed var(--line-strong);border-radius:8px;padding:5px 6px 5px 11px;font-size:13px;color:var(--ink)}
+  .meal-tag .x{border:none;background:none;color:var(--faint);cursor:pointer;font-size:14px}
+  .meal-tag .x:hover{color:var(--danger)}
+
+  .empty{border:1px dashed var(--line-strong);border-radius:var(--r);padding:34px 20px;text-align:center;color:var(--muted)}
+  .empty h3{margin:0 0 6px;color:var(--ink);font-size:16px}
+
+  /* Toolbar (sort + expand/collapse) */
+  .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .sortset{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .seg.sm button{padding:6px 11px;font-size:13px}
+  .linkbtn{border:none;background:none;color:var(--accent);font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:4px 6px;border-radius:6px}
+  .linkbtn:hover{background:var(--accent-soft)}
+
+  /* Per-person totals strip */
+  .ppl-card{margin-bottom:18px}
+  .ppl-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--line)}
+  table.ppl{width:100%;border-collapse:collapse;font-size:14px}
+  table.ppl td{padding:9px 18px;border-bottom:1px solid var(--line)}
+  table.ppl tr:last-child td{border-bottom:none}
+  table.ppl .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  table.ppl .rank{font-family:var(--mono);color:var(--faint);font-size:12px;width:32px}
+
+  /* collapsible caret */
+  .caret{border:none;background:none;cursor:pointer;color:var(--faint);font-size:13px;line-height:1;padding:4px;border-radius:6px;transition:transform .15s;flex:0 0 auto}
+  .caret:hover{color:var(--ink);background:var(--line)}
+  .caret.closed{transform:rotate(-90deg)}
+  .collapsible-body{overflow:hidden}
+  .collapsible-body.hidden{display:none}
+
+  /* settlement status footer on a dine-out log */
+  .settle-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 18px;border-top:1px solid var(--line);font-size:13px;font-weight:500}
+  .settle-foot.done{background:var(--accent-soft);color:var(--accent)}
+  .settle-foot.prog{background:var(--pending-soft);color:var(--pending)}
+  .settle-foot.none{background:var(--bg);color:var(--muted)}
+  .settle-foot .dotmark{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto}
+  .settle-foot .settle-now{background:var(--surface);border-color:currentColor;color:inherit;font-weight:600;flex:0 0 auto}
+  .settle-foot .settle-now:hover{background:var(--surface);filter:brightness(.97)}
+
+  /* Transaction cards */
+  .txn{margin-top:14px}
+  .txn-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:15px 18px;border-bottom:1px solid var(--line)}
+  .txn-when{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .badge{font-family:var(--mono);font-size:11px;letter-spacing:.04em;border-radius:6px;padding:3px 8px;text-transform:uppercase}
+  .badge.meal{background:var(--accent-soft);color:var(--accent)}
+  .badge.date{background:var(--line);color:var(--muted)}
+  .txn-title{font-weight:600;font-size:16px}
+  .txn-payer{font-size:13px;color:var(--muted)}
+  .txn-payer b{color:var(--ink);font-weight:600}
+  .txn-total{text-align:right}
+  .txn-total .amt{font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+  .txn-total .lbl{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+
+  table.lines{width:100%;border-collapse:collapse;font-size:14px}
+  table.lines th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);text-align:left;font-weight:600;padding:8px 18px;border-bottom:1px solid var(--line)}
+  table.lines td{padding:9px 18px;border-bottom:1px solid var(--line)}
+  table.lines tr:last-child td{border-bottom:none}
+  .ltype{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line-strong);border-radius:5px;padding:1px 6px}
+  .ltype.grp{color:var(--accent);border-color:var(--accent-soft);background:var(--accent-soft)}
+  .who{color:var(--muted);font-size:13px}
+
+  .adjust{display:flex;gap:24px;flex-wrap:wrap;padding:12px 18px;background:var(--bg);border-top:1px solid var(--line);font-size:14px}
+  .adjust .grp{display:flex;align-items:center;gap:8px}
+  .adjust .grp .v{font-family:var(--mono)}
+  .adj-neg{color:var(--accent)}
+
+  /* settlement */
+  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:22px}
+  .summary .cell{background:var(--surface);padding:16px 18px}
+  .summary .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
+  .summary .v{font-family:var(--mono);font-size:22px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+  .summary .v.out{color:var(--pending)}
+  .summary .v.set{color:var(--accent)}
+  .summary.sum2{grid-template-columns:minmax(0,2.4fr) minmax(0,1fr)}
+  .out-cell .out-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .out-link{border:1px solid var(--line-strong);background:var(--bg);border-radius:999px;padding:4px 11px;font:inherit;font-size:12px;color:var(--ink);cursor:pointer}
+  .out-link b{font-family:var(--mono);color:var(--pending)}
+  .out-link:hover{border-color:var(--accent);color:var(--accent)}
+  .out-link:hover b{color:var(--accent)}
+  @media (max-width:640px){.summary.sum2{grid-template-columns:1fr}}
+
+  /* ===== Auth + Groups screens ===== */
+  .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .gate-card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:26px}
+  .gate-card h1{font-size:22px;margin:0 0 2px;letter-spacing:-.02em}
+  .gate-card .tag{font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .gate-card .field{margin-top:14px}
+  .gate-card input{width:100%}
+  .gate-msg{font-size:13px;margin-top:12px;min-height:18px}
+  .gate-msg.err{color:var(--danger)} .gate-msg.ok{color:var(--accent)}
+  .gate-foot{margin-top:16px;font-size:13px;color:var(--muted)}
+  .gate-foot a{color:var(--accent);cursor:pointer;font-weight:600}
+  .groups-wrap{max-width:680px;margin:0 auto;padding:40px 20px}
+  .group-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:10px;cursor:pointer}
+  .group-row:hover{border-color:var(--accent)}
+  .group-row .gname{font-weight:600;font-size:15px}
+  .group-row .gmeta{font-size:12px;color:var(--faint);font-family:var(--mono)}
+  .gactions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .gactions .row{gap:8px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
+  .who-badge{font-size:12px;color:var(--muted);font-family:var(--mono)}
+  .code-pill{font-family:var(--mono);font-size:13px;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:4px 10px;letter-spacing:.05em}
+  .sync-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:6px;vertical-align:middle}
+  .sync-dot.on{background:var(--accent)} .sync-dot.busy{background:var(--pending)}
+
+  table.settle{width:100%;border-collapse:collapse;font-size:14px}
+  table.settle th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);text-align:left;font-weight:600;padding:9px 14px;border-bottom:1px solid var(--line)}
+  table.settle td{padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.settle .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600}
+  table.settle .amt.bd{font-weight:400;color:var(--muted)}
+  table.settle th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  table.settle th.sortable:hover{color:var(--accent)}
+  table.settle th .arrow{font-size:9px;opacity:.5;margin-left:3px}
+  table.settle th.sorted .arrow{opacity:1;color:var(--accent)}
+  @media (max-width:760px){
+    table.settle th.bd,table.settle td.bd{display:none}
+  }
+  table.settle select{padding:5px 8px;font-size:13px}
+  table.settle .modeinput{padding:5px 8px;font-size:13px;width:100%;min-width:110px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);color:var(--ink)}
+  table.settle .modeinput:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  .check{display:inline-flex;align-items:center;justify-content:center}
+  td.center,th.center{text-align:center}
+  .check input{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+
+  .status{font-family:var(--mono);font-size:11px;letter-spacing:.03em;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap}
+  .status.pending{background:var(--pending-soft);color:var(--pending)}
+  .status.paid{background:#FCEFC9;color:#946400}
+  .status.confirmed{background:var(--accent-soft);color:var(--accent)}
+  .status.self{background:var(--line);color:var(--muted)}
+  .status.nopay{background:var(--accent-soft);color:var(--accent)}
+  table.settle tr.payer-row td{background:var(--bg)}
+  table.settle tr.payer-row .who-name{font-weight:600}
+  table.settle tr.payer-row .crown{color:var(--accent);font-size:12px}
+
+  .settle-block{margin-bottom:20px}
+  .settle-block .sb-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .settle-block .sb-head.click{cursor:pointer}
+  .settle-block .sb-head.click:hover{background:var(--bg)}
+  .settle-block .sb-head .meta{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .settle-block .sb-head .paidby{font-size:13px;color:var(--muted)}
+
+  .progress{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .progress .bar{width:60px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+  .progress .bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+
+  /* modal */
+  .scrim{position:fixed;inset:0;background:rgba(31,36,33,.34);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:34px 16px;overflow:auto}
+  .scrim.open{display:flex}
+  .modal{background:var(--surface);border-radius:14px;box-shadow:0 20px 60px rgba(31,36,33,.25);width:100%;max-width:600px}
+  .modal h3{margin:0;font-size:17px}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid var(--line)}
+  .modal-body{padding:20px;max-height:64vh;overflow:auto}
+  .modal-foot{display:flex;justify-content:space-between;gap:10px;padding:14px 20px;border-top:1px solid var(--line)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .three{display:grid;grid-template-columns:1.4fr 1fr auto;gap:10px;align-items:end}
+  .seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden}
+  .seg button{border:none;background:var(--surface);padding:8px 12px;font:inherit;font-size:13px;color:var(--muted)}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+
+  .item-edit{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;background:var(--bg)}
+  .item-edit .ie-top{display:grid;grid-template-columns:1fr 120px auto;gap:10px;align-items:end}
+  .pchecks{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+  .pchecks label{display:inline-flex;align-items:center;gap:6px;font-size:13px;border:1px solid var(--line-strong);border-radius:999px;padding:4px 11px;cursor:pointer;background:var(--surface)}
+  .pchecks label.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  .pchecks input{display:none}
+
+  /* modal order subsections */
+  .subsec{border:1px solid var(--line);border-radius:10px;padding:12px}
+  .subhead{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:9px}
+  .person-block{border:1px solid var(--line-strong);border-radius:10px;background:var(--bg);padding:10px 12px;margin-top:8px}
+  .pb-head{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:8px}
+  .pb-head select{max-width:200px}
+  .pb-line{display:grid;grid-template-columns:1fr 120px auto;gap:8px;align-items:center;margin-top:7px}
+  .pb-sub{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:8px;text-align:right}
+
+  /* sortable line headers */
+  table.lines th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  table.lines th.sortable:hover{color:var(--accent)}
+  table.lines th .arrow{font-size:9px;opacity:.5;margin-left:3px}
+  table.lines th.sorted .arrow{opacity:1;color:var(--accent)}
+
+  /* per-log actions */
+  .log-actions{display:flex;gap:4px}
+  .log-actions .btn.sm{padding:5px 9px;font-size:12px}
+
+  .modewrap{position:relative}
+  footer.app{margin-top:40px;padding:18px 0;border-top:1px solid var(--line);color:var(--faint);font-size:12px;text-align:center}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:10px;font-size:14px;z-index:90;opacity:0;transition:.25s;box-shadow:var(--shadow)}
+  .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+
+  @media (max-width:640px){
+    .two,.three,.item-edit .ie-top,.pb-line{grid-template-columns:1fr}
+    .txn-head{flex-direction:column}
+    .txn-total{text-align:left}
+    table.lines th:nth-child(2),table.lines td:nth-child(2){display:none}
+  }
+  @media print{
+    header.app,nav.tabs,.no-print,footer.app{display:none!important}
+    body{background:#fff;padding:0}
+    .card{box-shadow:none;border-color:#ccc}
+    .panel{display:none!important}
+    .panel.active{display:block!important}
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="authView" class="gate" style="display:none">
+  <div class="gate-card">
+    <h1>Split the Tab</h1>
+    <div class="tag">dine-out settlement · shared</div>
+    <div class="field"><label class="field" style="margin:0 0 5px">Email</label><input type="email" id="authEmail" placeholder="you@example.com" autocomplete="username"></div>
+    <div class="field"><label class="field" style="margin:0 0 5px">Password</label><input type="password" id="authPass" placeholder="••••••••" autocomplete="current-password"></div>
+    <div class="row" style="margin-top:16px;gap:8px">
+      <button class="btn primary" id="btnSignIn" style="flex:1">Sign in</button>
+      <button class="btn" id="btnSignUp" style="flex:1">Create account</button>
+    </div>
+    <div class="gate-msg" id="authMsg"></div>
+    <div class="gate-foot">Use the same login on any device or browser to reach your shared groups.</div>
+  </div>
+</div>
+
+<!-- ===== GROUPS ===== -->
+<div id="groupsView" style="display:none">
+  <div class="groups-wrap">
+    <div class="topbar">
+      <div><h1 style="margin:0;font-size:22px">Your groups</h1><div class="who-badge" id="whoBadge"></div></div>
+      <div class="row">
+        <button class="theme-toggle" id="themeToggle2" aria-label="Toggle dark mode" title="Toggle dark / light">🌙</button>
+        <button class="btn sm" id="btnSignOut">Sign out</button>
+      </div>
+    </div>
+    <div id="groupList"></div>
+    <div class="gactions">
+      <div class="row"><input type="text" id="newGroupName" placeholder="New group name (e.g. Friday Barkada)" style="max-width:260px"><button class="btn primary sm" id="btnCreateGroup">Create group</button></div>
+      <div class="row"><input type="text" id="joinCode" placeholder="Join code" style="max-width:140px;text-transform:uppercase"><button class="btn sm" id="btnJoinGroup">Join with code</button></div>
+    </div>
+    <div class="gate-msg" id="groupsMsg"></div>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="appView" style="display:none">
+<header class="app">
+  <div class="wrap">
+    <div class="head-inner">
+      <div class="brand">
+        <h1>Split the Tab</h1>
+        <span class="tab" id="appGroupName">group</span>
+      </div>
+      <div class="head-right no-print">
+        <div class="cur">
+          <span><span class="sync-dot" id="syncDot"></span>Currency</span>
+          <input type="text" id="curInput" maxlength="3" value="₱" aria-label="Currency symbol">
+        </div>
+        <div class="mini-tools">
+          <button class="mini" id="exportData" title="Export backup (JSON)" aria-label="Export backup">⬇</button>
+          <label class="mini" title="Import backup (JSON)" aria-label="Import backup">⬆<input type="file" id="importData" accept="application/json" hidden></label>
+          <button class="mini" id="resetData" title="Clear this group's data" aria-label="Clear data">🗑</button>
+        </div>
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark / light">🌙</button>
+        <button class="btn sm" id="btnGroups">Groups</button>
+      </div>
+    </div>
+    <div class="wrap" style="padding:0">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="txns" aria-selected="true">Dine-outs <span class="count" id="cTxn">0</span></button>
+        <button role="tab" data-tab="settle" aria-selected="false">Settlement <span class="count" id="cOut">0</span></button>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ===== TRANSACTIONS ===== -->
+  <section class="panel active" id="panel-txns">
+    <div class="row no-print" style="justify-content:space-between;margin-bottom:18px">
+      <h2 class="sec" style="margin:0">Recorded dine-outs</h2>
+      <button class="btn primary" id="newTxn">+ New dine-out</button>
+    </div>
+
+    <div class="toolbar no-print" id="txnToolbar" style="display:none">
+      <span class="sec" style="margin:0">Dine-out logs</span>
+      <div class="row">
+        <button class="linkbtn" id="expandAllTxn">Expand all</button>
+        <button class="linkbtn" id="collapseAllTxn">Collapse all</button>
+      </div>
+    </div>
+
+    <div id="txnList"></div>
+  </section>
+
+  <!-- ===== SETTLEMENT ===== -->
+  <section class="panel" id="panel-settle">
+    <div class="row no-print" style="justify-content:flex-end;margin-bottom:16px">
+      <button class="btn sm" id="exportCsv">Export CSV</button>
+      <button class="btn sm" id="printReport">Print</button>
+    </div>
+    <div id="summaryBox"></div>
+    <div class="toolbar no-print" id="settleToolbar" style="display:none">
+      <span class="sec" style="margin:0">Per dine-out</span>
+      <div class="row">
+        <button class="linkbtn" id="expandAllSettle">Expand all</button>
+        <button class="linkbtn" id="collapseAllSettle">Collapse all</button>
+      </div>
+    </div>
+    <div id="settleList"></div>
+  </section>
+</main>
+</div>
+<!-- /appView -->
+
+<footer class="app wrap">Split the Tab · runs entirely in your browser · data stays on this device</footer>
+
+<!-- Transaction modal -->
+<div class="scrim" id="txnScrim">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="txnModalTitle">
+    <div class="modal-head">
+      <h3 id="txnModalTitle">New dine-out</h3>
+      <button class="iconbtn" id="closeTxn" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="two" style="margin-bottom:12px">
+        <div><label class="field">Date</label><input type="date" id="fDate"></div>
+        <div><label class="field">Meal</label><input type="text" id="fMeal" list="mealDL" placeholder="Lunch, Dinner, Merienda…" autocomplete="off"><datalist id="mealDL"></datalist></div>
+      </div>
+      <div class="two" style="margin-bottom:14px">
+        <div><label class="field">Place (optional)</label><input type="text" id="fPlace" placeholder="Restaurant or venue"></div>
+        <div><label class="field">Who paid the bill</label><select id="fPayer"></select></div>
+      </div>
+
+      <div class="subsec" style="margin-bottom:14px">
+        <div class="subhead">People sharing this bill</div>
+        <p class="muted" style="font-size:13px;margin:0 0 8px">Add everyone who joined. New names are remembered for next time.</p>
+        <div class="row" style="gap:8px;margin-bottom:10px">
+          <input type="text" id="personAdd" list="memberDL" placeholder="Type a name…" autocomplete="off" style="max-width:240px"><datalist id="memberDL"></datalist>
+          <button class="btn sm" id="addPerson" type="button">+ Add person</button>
+        </div>
+        <div class="chips" id="peopleChips"></div>
+      </div>
+
+      <label class="field" style="margin-top:6px">Order lines</label>
+      <p class="muted" style="font-size:13px;margin:0 0 10px">An <b>individual order</b> is charged to one person — pick the person, then add everything they ordered. A <b>shared order</b> is split evenly among the people you tick.</p>
+
+      <div class="subsec">
+        <div class="subhead">Individual orders</div>
+        <div class="row" style="gap:8px;margin-bottom:4px">
+          <select id="indivPerson" class="grow" style="max-width:240px"></select>
+          <button class="btn sm" id="addIndivPerson" type="button">+ Order</button>
+        </div>
+        <div id="indivEdit"></div>
+      </div>
+
+      <div class="subsec" style="margin-top:14px">
+        <div class="subhead">Shared orders</div>
+        <div id="groupEdit"></div>
+        <button class="btn sm" id="addGroup" type="button" style="margin-top:8px">+ Shared order</button>
+      </div>
+
+      <div class="two" style="margin-top:18px">
+        <div>
+          <label class="field">Service charge</label>
+          <div class="row" style="gap:8px;flex-wrap:nowrap">
+            <div class="seg" id="scSeg"><button type="button" data-m="percent" aria-pressed="true">%</button><button type="button" data-m="fixed" aria-pressed="false">amount</button></div>
+            <input type="number" id="fSc" min="0" step="0.01" value="0" style="max-width:120px">
+          </div>
+        </div>
+        <div>
+          <label class="field">Discount</label>
+          <div class="row" style="gap:8px;flex-wrap:nowrap">
+            <div class="seg" id="dcSeg"><button type="button" data-m="percent" aria-pressed="true">%</button><button type="button" data-m="fixed" aria-pressed="false">amount</button></div>
+            <input type="number" id="fDc" min="0" step="0.01" value="0" style="max-width:120px">
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;box-shadow:none;background:var(--bg)">
+        <div class="pad" id="previewBox"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost danger" id="deleteTxn" style="visibility:hidden">Delete</button>
+      <div class="row">
+        <button class="btn" id="cancelTxn">Cancel</button>
+        <button class="btn primary" id="saveTxn">Save dine-out</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const uid=()=>Math.random().toString(36).slice(2,9);
+const THEME_KEY="splitTheTab.theme.v1";
+
+/* ============================================================
+   SUPABASE CONFIG — paste your project values here (Step 2)
+   ============================================================ */
+const SUPABASE_URL = "https://oszmxhllsoiycteiweck.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zem14aGxsc29peWN0ZWl3ZWNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODUyMTUsImV4cCI6MjA5Njc2MTIxNX0.snH8HVtHeUA1ow56SWrgmflwr1NN0C-42z-uaCs1Gas";
+
+let sb=null;
+function initSupabase(){
+  if(!window.supabase) return false;
+  if(SUPABASE_URL.indexOf("YOUR_")===0 || SUPABASE_ANON_KEY.indexOf("YOUR_")===0) return false;
+  sb=window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return true;
+}
+
+const DEFAULTS={
+  currency:"₱",
+  members:[],
+  meals:["Breakfast","Lunch","Dinner","Snacks"],
+  modes:["Cash","GCash","Maya","Bank transfer"],
+  txns:[]
+};
+let state=JSON.parse(JSON.stringify(DEFAULTS));
+
+// ---- view state (local, per-session) ----
+const collapsedTxn=new Set();
+const collapsedSettle=new Set();
+const lineSort={};
+const settleSort={};
+
+// ---- cloud session context ----
+let me=null;             // signed-in auth user
+let currentGroup=null;   // {id,name,code,created_by}
+let channel=null;        // realtime channel
+let saveTimer=null;
+
+function memberName(id){const m=state.members.find(m=>m.id===id);return m?m.name:"—";}
+function money(n){const v=(Math.round(n*100)/100);return state.currency+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+let toastTimer;
+function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2200);}
+
+function setSync(s){const d=$("#syncDot");if(!d)return;d.className="sync-dot"+(s==="on"?" on":s==="busy"?" busy":"");}
+
+/* ---------- Theme ---------- */
+function applyTheme(mode){
+  document.documentElement.setAttribute("data-theme",mode==="dark"?"dark":"light");
+  const lbl=mode==="dark"?"☀️":"🌙";
+  ["#themeToggle","#themeToggle2"].forEach(s=>{const b=$(s);if(b)b.textContent=lbl;});
+}
+function initTheme(){
+  let mode;try{mode=localStorage.getItem(THEME_KEY);}catch(e){}
+  if(!mode){mode=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";}
+  applyTheme(mode);
+}
+function bindTheme(){
+  ["#themeToggle","#themeToggle2"].forEach(s=>{const b=$(s);if(b)b.addEventListener("click",()=>{
+    const next=document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark";
+    applyTheme(next);try{localStorage.setItem(THEME_KEY,next);}catch(e){}
+  });});
+}
+
+/* ---------- Views ---------- */
+function showView(v){
+  $("#authView").style.display = v==="auth"?"flex":"none";
+  $("#groupsView").style.display = v==="groups"?"block":"none";
+  $("#appView").style.display = v==="app"?"block":"none";
+}
+function amsg(t,err){const e=$("#authMsg");e.textContent=t||"";e.className="gate-msg "+(err?"err":"ok");}
+function gmsg(t,err){const e=$("#groupsMsg");e.textContent=t||"";e.className="gate-msg "+(err?"err":"ok");}
+const val=s=>($(s).value||"").trim();
+
+/* ---------- Cloud data layer ---------- */
+// Save is debounced; writes the whole group document. Last write wins.
+function save(){
+  if(!sb||!currentGroup) return;
+  const gid=currentGroup.id;
+  setSync("busy");
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    if(!sb||!currentGroup||currentGroup.id!==gid) return;  // group changed/closed before flush
+    const payload=JSON.parse(JSON.stringify(state));
+    const {error}=await sb.from("groups").update({
+      data:payload, updated_by: me?me.id:null, updated_at:new Date().toISOString()
+    }).eq("id",gid);
+    if(currentGroup&&currentGroup.id===gid) setSync(error?"off":"on");
+    if(error)toast("Sync failed — change will resend when you edit again");
+  },500);
+}
+
+function subscribeGroup(id){
+  if(channel){try{sb.removeChannel(channel);}catch(e){}channel=null;}
+  channel=sb.channel("group-"+id)
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"groups",filter:"id=eq."+id},payload=>{
+      const row=payload.new;if(!row)return;
+      if(me && row.updated_by===me.id) return;       // ignore our own echo
+      state=Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), row.data||{});
+      if(currentGroup){currentGroup.name=row.name;currentGroup.code=row.code;}
+      renderAll();
+      toast("Updated by a group member");
+    })
+    .subscribe();
+}
+
+async function openGroup(g){
+  const {data,error}=await sb.from("groups").select("id,name,code,created_by,data").eq("id",g.id).single();
+  if(error){gmsg("Could not open group: "+error.message,true);return;}
+  currentGroup={id:data.id,name:data.name,code:data.code,created_by:data.created_by};
+  state=Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), data.data||{});
+  collapsedTxn.clear();collapsedSettle.clear();
+  for(const k in lineSort)delete lineSort[k];
+  for(const k in settleSort)delete settleSort[k];
+  subscribeGroup(data.id);
+  $("#appGroupName").textContent=currentGroup.name;
+  showView("app");setSync("on");
+  $$("nav.tabs button").forEach((b,i)=>b.setAttribute("aria-selected",i===0?"true":"false"));
+  $$(".panel").forEach(p=>p.classList.toggle("active",p.id==="panel-txns"));
+  renderAll();
+}
+function backToGroups(){
+  if(channel){try{sb.removeChannel(channel);}catch(e){}channel=null;}
+  currentGroup=null;showView("groups");listGroups();
+}
+
+/* ---------- Auth ---------- */
+async function bootAuth(){
+  if(!initSupabase()){
+    showView("auth");
+    amsg("This page isn't configured yet. Open the HTML file and paste your Supabase URL and anon key into the CONFIG section near the top of the script (see the setup steps).",true);
+    $("#btnSignIn").disabled=$("#btnSignUp").disabled=true;
+    return;
+  }
+  sb.auth.onAuthStateChange((_e,session)=>handleSession(session));
+  const {data}=await sb.auth.getSession();
+  handleSession(data?data.session:null);
+}
+function handleSession(session){
+  me=session?session.user:null;
+  if(me){const w=$("#whoBadge");if(w)w.textContent="Signed in as "+me.email;showView("groups");listGroups();}
+  else {showView("auth");}
+}
+$("#btnSignIn").addEventListener("click",async()=>{
+  const email=val("#authEmail"),password=$("#authPass").value;
+  if(!email||!password){amsg("Enter your email and password.",true);return;}
+  amsg("Signing in…");
+  const {error}=await sb.auth.signInWithPassword({email,password});
+  if(error)amsg(error.message,true);
+});
+$("#btnSignUp").addEventListener("click",async()=>{
+  const email=val("#authEmail"),password=$("#authPass").value;
+  if(!email||password.length<6){amsg("Enter an email and a password of at least 6 characters.",true);return;}
+  amsg("Creating account…");
+  const {data,error}=await sb.auth.signUp({email,password});
+  if(error){amsg(error.message,true);return;}
+  if(data && data.session){amsg("Account created — you're in.","ok");}
+  else {amsg("Account created. Check your email to confirm, then sign in.","ok");}
+});
+$("#authPass").addEventListener("keydown",e=>{if(e.key==="Enter")$("#btnSignIn").click();});
+$("#btnSignOut").addEventListener("click",async()=>{await sb.auth.signOut();});
+$("#btnGroups").addEventListener("click",backToGroups);
+
+/* ---------- Groups ---------- */
+async function listGroups(){
+  gmsg("");
+  const {data,error}=await sb.from("groups").select("id,name,code,created_by,updated_at").order("updated_at",{ascending:false});
+  const list=$("#groupList");
+  if(error){gmsg("Could not load groups: "+error.message,true);list.innerHTML="";return;}
+  if(!data || !data.length){list.innerHTML='<p class="muted" style="font-size:14px">No groups yet. Create one below, or join an existing group with its code.</p>';return;}
+  list.innerHTML=data.map(g=>{
+    const owner=g.created_by===(me&&me.id);
+    return `<div class="group-row" data-g="${g.id}">
+      <div><div class="gname">${esc(g.name)}</div><div class="gmeta">code ${esc(g.code)}${owner?" · owner":""}</div></div>
+      <div class="row" style="gap:6px">
+        <button class="mini" data-copy="${esc(g.code)}" title="Copy join code" aria-label="Copy code">⧉</button>
+        ${owner?`<button class="mini" data-del="${g.id}" title="Delete group" aria-label="Delete group">🗑</button>`
+               :`<button class="mini" data-leave="${g.id}" title="Leave group" aria-label="Leave group">↩</button>`}
+        <button class="btn sm" data-open="${g.id}">Open →</button>
+      </div>
+    </div>`;}).join("");
+  const open=id=>{const g=data.find(x=>x.id===id);if(g)openGroup(g);};
+  $$(".group-row",list).forEach(r=>r.addEventListener("click",e=>{if(!e.target.closest("button"))open(r.dataset.g);}));
+  $$("[data-open]",list).forEach(b=>b.addEventListener("click",()=>open(b.dataset.open)));
+  $$("[data-copy]",list).forEach(b=>b.addEventListener("click",async()=>{
+    try{await navigator.clipboard.writeText(b.dataset.copy);gmsg("Join code "+b.dataset.copy+" copied.","ok");}
+    catch(e){gmsg("Join code: "+b.dataset.copy,false);}
+  }));
+  $$("[data-leave]",list).forEach(b=>b.addEventListener("click",async()=>{
+    if(!confirm("Leave this group? You can rejoin later with the code."))return;
+    await sb.from("group_access").delete().eq("group_id",b.dataset.leave).eq("user_id",me.id);listGroups();
+  }));
+  $$("[data-del]",list).forEach(b=>b.addEventListener("click",async()=>{
+    if(!confirm("Delete this group for everyone? This permanently removes all its dine-outs."))return;
+    const {error}=await sb.from("groups").delete().eq("id",b.dataset.del);
+    if(error){gmsg(error.message,true);return;}listGroups();
+  }));
+}
+$("#btnCreateGroup").addEventListener("click",async()=>{
+  const name=val("#newGroupName");if(!name){gmsg("Give the group a name.",true);return;}
+  gmsg("Creating…");
+  const {data,error}=await sb.rpc("create_group",{p_name:name});
+  if(error){gmsg(error.message,true);return;}
+  $("#newGroupName").value="";gmsg("Group created.","ok");listGroups();
+});
+$("#btnJoinGroup").addEventListener("click",async()=>{
+  const code=val("#joinCode").toUpperCase();if(!code){gmsg("Enter a join code.",true);return;}
+  gmsg("Joining…");
+  const {data,error}=await sb.rpc("join_group",{p_code:code});
+  if(error){gmsg(error.message,true);return;}
+  if(!data){gmsg("No group matches that code.",true);return;}
+  $("#joinCode").value="";gmsg("Joined.","ok");listGroups();
+});
+
+/* ---------- Core computation ---------- */
+// Returns {grand, service, discount, total, shares:{memberId:{subtotal,share}}}
+function computeTxn(txn){
+  const subtotals={};
+  let grand=0;
+  for(const it of txn.items){
+    const amt=Number(it.amount)||0;
+    if(it.type==="individual"){
+      if(it.memberId){subtotals[it.memberId]=(subtotals[it.memberId]||0)+amt;}
+    }else{
+      const ids=(it.participantIds||[]).filter(id=>state.members.some(m=>m.id===id));
+      if(ids.length){const per=amt/ids.length;ids.forEach(id=>subtotals[id]=(subtotals[id]||0)+per);}
+    }
+    grand+=amt;
+  }
+  const sc=txn.serviceCharge||{mode:"percent",value:0};
+  const dc=txn.discount||{mode:"percent",value:0};
+  const service=sc.mode==="percent"?grand*(Number(sc.value)||0)/100:(Number(sc.value)||0);
+  const discount=dc.mode==="percent"?grand*(Number(dc.value)||0)/100:(Number(dc.value)||0);
+  const total=grand+service-discount;
+
+  // raw shares in cents
+  const ids=Object.keys(subtotals);
+  const raw=ids.map(id=>{
+    const factor=grand>0?subtotals[id]/grand:0;
+    return (subtotals[id]+service*factor-discount*factor)*100;
+  });
+  const floors=raw.map(r=>Math.floor(r));
+  let sumFloors=floors.reduce((a,b)=>a+b,0);
+  let totalCents=Math.round(total*100);
+  let remainder=totalCents-sumFloors;
+  // distribute leftover cents by largest fractional part
+  const order=ids.map((_,i)=>i).sort((a,b)=>(raw[b]-floors[b])-(raw[a]-floors[a]));
+  let k=0;
+  while(remainder>0 && order.length){floors[order[k%order.length]]++;remainder--;k++;}
+  while(remainder<0 && order.length){const j=order[order.length-1-((-k)%order.length)];floors[j]=Math.max(0,floors[j]-1);remainder++;k++;}
+
+  const shares={};
+  ids.forEach((id,i)=>{
+    const factor=grand>0?subtotals[id]/grand:0;
+    shares[id]={subtotal:subtotals[id],service:service*factor,discount:discount*factor,share:floors[i]/100};
+  });
+  return {grand,service,discount,total,shares};
+}
+
+/* ---------- Render: tabs ---------- */
+$$("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{
+  $$("nav.tabs button").forEach(x=>x.setAttribute("aria-selected","false"));
+  b.setAttribute("aria-selected","true");
+  $$(".panel").forEach(p=>p.classList.remove("active"));
+  $("#panel-"+b.dataset.tab).classList.add("active");
+  if(b.dataset.tab==="settle")renderSettle();
+  if(b.dataset.tab==="txns")renderTxns();
+}));
+
+/* ---------- Currency ---------- */
+$("#curInput").value=state.currency;
+$("#curInput").addEventListener("input",e=>{state.currency=e.target.value||"₱";save();renderTxns();renderSettle();});
+
+/* ---------- Remembered roster helpers ----------
+   Members, meals and modes are remembered in the shared group document.
+   They're created on the fly while logging a dine-out, never on a separate page. */
+function ensureMember(name){
+  name=(name||"").trim();
+  if(!name)return null;
+  let m=state.members.find(x=>x.name.toLowerCase()===name.toLowerCase());
+  if(!m){m={id:uid(),name};state.members.push(m);}     // remembered for next time
+  return m.id;
+}
+function rememberMeal(v){v=(v||"").trim();if(v&&!state.meals.includes(v))state.meals.push(v);}
+function rememberMode(v){v=(v||"").trim();if(v&&!state.modes.includes(v))state.modes.push(v);}
+
+/* data tools */
+$("#exportData").addEventListener("click",()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="split-the-tab-"+new Date().toISOString().slice(0,10)+".json";a.click();
+});
+$("#importData").addEventListener("change",e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{const p=JSON.parse(r.result);state=Object.assign({},DEFAULTS,p);save();renderAll();toast("Backup imported");}catch(err){toast("Could not read that file");}};
+  r.readAsText(f);e.target.value="";
+});
+$("#resetData").addEventListener("click",()=>{
+  if(confirm("Clear all members, dine-outs and settlement records in THIS group? This can't be undone."))
+  {state=JSON.parse(JSON.stringify(DEFAULTS));save();renderAll();toast("Group data cleared");}
+});
+
+/* ---------- Transactions list ---------- */
+// settlement status for one dine-out (debtors only, payer excluded)
+function settleStatus(t){
+  const c=computeTxn(t);
+  const debtors=state.members.filter(m=>c.shares[m.id]&&m.id!==t.payerId);
+  const done=debtors.filter(m=>{const s=t.settle&&t.settle[m.id];return s&&s.received;}).length;
+  if(!debtors.length) return {total:0,done:0,cls:"none",label:"No settlement needed — only the payer dined here."};
+  if(done===debtors.length) return {total:debtors.length,done,cls:"done",label:"Settlement complete — everyone has paid and the payer confirmed receipt."};
+  return {total:debtors.length,done,cls:"prog",label:`Settlement in progress — ${done} of ${debtors.length} confirmed.`};
+}
+
+function renderTxns(){
+  const list=$("#txnList");
+  $("#txnToolbar").style.display=state.txns.length?"flex":"none";
+  if(!state.txns.length){
+    list.innerHTML=`<div class="empty"><h3>No dine-outs yet</h3><p>Record your first one — pick the date and meal, add what everyone ordered, and the splits compute automatically.</p><button class="btn primary" onclick="openTxn()">+ New dine-out</button></div>`;
+    updateCounts();return;
+  }
+  const sorted=[...state.txns].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||0);
+  list.innerHTML=sorted.map(t=>{
+    const c=computeTxn(t);
+    const collapsed=collapsedTxn.has(t.id);
+    // build display rows, then sort if requested
+    let disp=t.items.map(it=>({
+      label:it.label||"Item",
+      type:it.type,
+      who:it.type==="individual"?memberName(it.memberId):((it.participantIds||[]).map(memberName).join(", ")||"no one"),
+      amount:Number(it.amount)||0
+    }));
+    const ls=lineSort[t.id];
+    if(ls){
+      const dir=ls.dir;
+      disp.sort((a,b)=>{
+        if(ls.key==="amount")return (a.amount-b.amount)*dir;
+        const av=(ls.key==="for"?a.who:a.label).toLowerCase();
+        const bv=(ls.key==="for"?b.who:b.label).toLowerCase();
+        return av.localeCompare(bv)*dir;
+      });
+    }
+    const arrow=k=>ls&&ls.key===k?(ls.dir>0?"▲":"▼"):"↕";
+    const sortedCls=k=>ls&&ls.key===k?"sorted":"";
+    const lines=disp.map(r=>`<tr>
+        <td>${esc(r.label)} <span class="ltype ${r.type==="group"?"grp":""}">${r.type==="group"?"shared":"individual"}</span></td>
+        <td class="who">${esc(r.who)}</td>
+        <td class="right mono">${money(r.amount)}</td></tr>`).join("")
+      ||`<tr><td colspan="3" class="muted" style="padding:14px 18px">No order lines.</td></tr>`;
+    const sc=t.serviceCharge,dc=t.discount;
+    const st=settleStatus(t);
+    return `<div class="card txn">
+      <div class="txn-head">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <button class="caret ${collapsed?"closed":""} no-print" data-toggle="${t.id}" aria-label="Expand or collapse" title="Expand / collapse">▼</button>
+          <div>
+            <div class="txn-when">
+              <span class="badge meal">${esc(t.meal||"—")}</span>
+              <span class="badge date">${esc(t.date||"no date")}</span>
+              <span class="txn-title">${esc(t.place||"Dine-out")}</span>
+            </div>
+            <div class="txn-payer" style="margin-top:6px">Paid by <b>${esc(memberName(t.payerId))}</b></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="txn-total"><div class="amt">${money(c.total)}</div><div class="lbl">total bill</div></div>
+          <div class="log-actions no-print">
+            <button class="btn sm" data-share="${t.id}" title="Share summary">Share</button>
+            <button class="btn sm" data-pdf="${t.id}" title="Save / print as PDF">PDF</button>
+            <button class="btn ghost sm" onclick="openTxn('${t.id}')">Edit</button>
+          </div>
+        </div>
+      </div>
+      <div class="collapsible-body ${collapsed?"hidden":""}">
+        <table class="lines"><thead><tr>
+          <th class="sortable ${sortedCls('order')}" data-sort="order" data-t="${t.id}">Order <span class="arrow">${arrow('order')}</span></th>
+          <th class="sortable ${sortedCls('for')}" data-sort="for" data-t="${t.id}">For <span class="arrow">${arrow('for')}</span></th>
+          <th class="right sortable ${sortedCls('amount')}" data-sort="amount" data-t="${t.id}">Amount <span class="arrow">${arrow('amount')}</span></th>
+        </tr></thead><tbody>${lines}</tbody></table>
+        <div class="adjust">
+          <div class="grp"><span class="muted">Subtotal</span><span class="v">${money(c.grand)}</span></div>
+          <div class="grp"><span class="muted">Service ${sc.mode==="percent"?"("+(Number(sc.value)||0)+"%)":""}</span><span class="v">${money(c.service)}</span></div>
+          <div class="grp"><span class="muted">Discount ${dc.mode==="percent"?"("+(Number(dc.value)||0)+"%)":""}</span><span class="v adj-neg">−${money(c.discount)}</span></div>
+          <div class="grp" style="margin-left:auto"><span class="muted">Total</span><span class="v"><b>${money(c.total)}</b></span></div>
+        </div>
+      </div>
+      <div class="settle-foot ${st.cls}">
+        <span style="display:flex;align-items:center;gap:8px"><span class="dotmark"></span>${st.label}</span>
+        ${st.cls!=="none"?`<button class="btn sm settle-now no-print" data-settle="${t.id}">Settle now →</button>`:""}
+      </div>
+    </div>`;
+  }).join("");
+  $$("[data-toggle]",list).forEach(btn=>btn.addEventListener("click",()=>{
+    const id=btn.dataset.toggle;
+    if(collapsedTxn.has(id))collapsedTxn.delete(id);else collapsedTxn.add(id);
+    renderTxns();
+  }));
+  // sortable column headers
+  $$("th.sortable",list).forEach(th=>th.addEventListener("click",()=>{
+    const tid=th.dataset.t,key=th.dataset.sort;const cur=lineSort[tid];
+    if(cur&&cur.key===key)cur.dir*=-1;else lineSort[tid]={key,dir:1};
+    if(collapsedTxn.has(tid))collapsedTxn.delete(tid); // keep visible when sorting
+    renderTxns();
+  }));
+  // share / pdf per log
+  $$("[data-share]",list).forEach(b=>b.addEventListener("click",()=>shareLog(b.dataset.share)));
+  $$("[data-pdf]",list).forEach(b=>b.addEventListener("click",()=>pdfLog(b.dataset.pdf)));
+  $$("[data-settle]",list).forEach(b=>b.addEventListener("click",()=>gotoSettle(b.dataset.settle)));
+  updateCounts();
+}
+function gotoSettle(id){
+  const tabs=$$("nav.tabs button");
+  tabs.forEach(x=>x.setAttribute("aria-selected",x.dataset.tab==="settle"?"true":"false"));
+  $$(".panel").forEach(p=>p.classList.toggle("active",p.id==="panel-settle"));
+  collapsedSettle.delete(id);
+  renderSettle();
+  const el=document.getElementById("settle-"+id);
+  if(el){el.scrollIntoView({behavior:"smooth",block:"start"});el.style.outline="2px solid var(--accent)";setTimeout(()=>el.style.outline="",1600);}
+}
+$("#expandAllTxn").addEventListener("click",()=>{collapsedTxn.clear();renderTxns();});
+$("#collapseAllTxn").addEventListener("click",()=>{state.txns.forEach(t=>collapsedTxn.add(t.id));renderTxns();});
+
+/* ---------- Per-log share / PDF ---------- */
+function logText(t){
+  const c=computeTxn(t);
+  const L=[];
+  L.push(`${t.place||"Dine-out"} — ${t.meal||""} · ${t.date||"no date"}`);
+  L.push(`Paid by ${memberName(t.payerId)}`);
+  L.push("");
+  L.push("Orders:");
+  t.items.forEach(it=>{
+    const who=it.type==="individual"?memberName(it.memberId):"shared ("+((it.participantIds||[]).map(memberName).join(", "))+")";
+    L.push(`  • ${it.label||"Item"} — ${who} — ${money(Number(it.amount)||0)}`);
+  });
+  L.push("");
+  L.push(`Subtotal: ${money(c.grand)}`);
+  if(c.service)L.push(`Service: ${money(c.service)}`);
+  if(c.discount)L.push(`Discount: −${money(c.discount)}`);
+  L.push(`TOTAL: ${money(c.total)}`);
+  L.push("");
+  L.push("Who owes the payer:");
+  state.members.forEach(m=>{
+    if(!c.shares[m.id]||m.id===t.payerId)return;
+    const s=(t.settle&&t.settle[m.id])||{};
+    const stt=s.received?"confirmed":s.paid?"paid, awaiting":"pending";
+    L.push(`  • ${m.name}: ${money(c.shares[m.id].share)} — ${stt}${s.mode?" ("+s.mode+")":""}`);
+  });
+  return L.join("\n");
+}
+async function shareLog(id){
+  const t=state.txns.find(x=>x.id===id);if(!t)return;
+  const text=logText(t);
+  const title=(t.place||"Dine-out")+" · "+(t.date||"");
+  if(navigator.share){try{await navigator.share({title,text});return;}catch(e){if(e&&e.name==="AbortError")return;}}
+  try{await navigator.clipboard.writeText(text);toast("Summary copied to clipboard");}
+  catch(e){
+    // last resort: download as .txt
+    const blob=new Blob([text],{type:"text/plain"});const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download=fileStub(t)+".txt";a.click();toast("Saved summary as text file");
+  }
+}
+function fileStub(t){return ("dineout-"+(t.date||"")+"-"+(t.place||"log")).replace(/[^\w-]+/g,"-").replace(/-+/g,"-").toLowerCase();}
+function logHtml(t){
+  const c=computeTxn(t);
+  const rows=t.items.map(it=>{
+    const who=it.type==="individual"?memberName(it.memberId):"Shared — "+((it.participantIds||[]).map(memberName).join(", "));
+    return `<tr><td>${esc(it.label||"Item")}</td><td>${esc(who)}</td><td class="r">${esc(money(Number(it.amount)||0))}</td></tr>`;
+  }).join("");
+  const owe=state.members.filter(m=>c.shares[m.id]&&m.id!==t.payerId).map(m=>{
+    const s=(t.settle&&t.settle[m.id])||{};
+    const stt=s.received?"Confirmed":s.paid?"Paid, awaiting":"Pending";
+    return `<tr><td>${esc(m.name)}</td><td class="r">${esc(money(c.shares[m.id].share))}</td><td>${esc(s.mode||"—")}</td><td>${stt}</td></tr>`;
+  }).join("")||`<tr><td colspan="4" style="color:#888">Only the payer dined here.</td></tr>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(t.place||"Dine-out")} — ${esc(t.date||"")}</title>
+  <style>
+    body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2421;max-width:640px;margin:24px auto;padding:0 20px}
+    h1{font-size:20px;margin:0 0 2px} .meta{color:#666;font-size:13px;margin-bottom:18px}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0 18px}
+    th,td{text-align:left;padding:7px 6px;border-bottom:1px solid #e5e2da}
+    th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#999}
+    .r{text-align:right;font-variant-numeric:tabular-nums}
+    .tot{display:flex;justify-content:space-between;font-size:14px;padding:3px 0}
+    .tot.grand{font-weight:700;font-size:17px;border-top:2px solid #1f2421;margin-top:6px;padding-top:8px}
+    h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin:20px 0 4px}
+    @media print{body{margin:0}}
+  </style></head><body>
+  <h1>${esc(t.place||"Dine-out")}</h1>
+  <div class="meta">${esc(t.meal||"")} · ${esc(t.date||"no date")} · paid by <b>${esc(memberName(t.payerId))}</b></div>
+  <h2>Orders</h2>
+  <table><thead><tr><th>Order</th><th>For</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="tot"><span>Subtotal</span><span>${esc(money(c.grand))}</span></div>
+  <div class="tot"><span>Service charge</span><span>${esc(money(c.service))}</span></div>
+  <div class="tot"><span>Discount</span><span>−${esc(money(c.discount))}</span></div>
+  <div class="tot grand"><span>Total bill</span><span>${esc(money(c.total))}</span></div>
+  <h2>Who owes the payer</h2>
+  <table><thead><tr><th>Person</th><th class="r">Owes</th><th>Mode</th><th>Status</th></tr></thead><tbody>${owe}</tbody></table>
+  </body></html>`;
+}
+function pdfLog(id){
+  const t=state.txns.find(x=>x.id===id);if(!t)return;
+  const w=window.open("","_blank");
+  if(!w){
+    // popup blocked → download the standalone HTML instead
+    const blob=new Blob([logHtml(t)],{type:"text/html"});const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download=fileStub(t)+".html";a.click();
+    toast("Pop-up blocked — saved as HTML you can open and print to PDF");return;
+  }
+  w.document.write(logHtml(t));w.document.close();
+  w.onload=()=>{w.focus();w.print();};
+  setTimeout(()=>{try{w.focus();w.print();}catch(e){}},400);
+}
+
+function updateCounts(){
+  $("#cTxn").textContent=state.txns.length;
+  let out=0;
+  state.txns.forEach(t=>{const c=computeTxn(t);Object.keys(c.shares).forEach(id=>{if(id!==t.payerId){const s=t.settle&&t.settle[id];if(!(s&&s.received))out++;}});});
+  $("#cOut").textContent=out;
+}
+
+/* ---------- Transaction modal ---------- */
+let editing=null; // txn id or null
+let draftItems=[];
+let draftPeople=[]; // member ids taking part in this draft
+let scMode="percent",dcMode="percent";
+
+function peopleObjs(){return draftPeople.map(pid=>state.members.find(m=>m.id===pid)).filter(Boolean);}
+function refreshModalDatalists(){
+  $("#mealDL").innerHTML=state.meals.map(m=>`<option value="${esc(m)}">`).join("");
+  $("#memberDL").innerHTML=state.members.map(m=>`<option value="${esc(m.name)}">`).join("");
+}
+function renderPeople(){
+  const ppl=peopleObjs();
+  const chips=$("#peopleChips");
+  chips.innerHTML = ppl.length
+    ? ppl.map(m=>`<span class="chip"><span class="dot"></span>${esc(m.name)}<button class="x" data-rm="${m.id}" aria-label="Remove ${esc(m.name)}">✕</button></span>`).join("")
+    : '<span class="muted" style="font-size:13px">No one added yet — type a name above.</span>';
+  $$(".chip .x",chips).forEach(x=>x.addEventListener("click",()=>removePerson(x.dataset.rm)));
+  const fPayer=$("#fPayer");const cur=fPayer.value;
+  fPayer.innerHTML=ppl.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
+  if(ppl.some(m=>m.id===cur))fPayer.value=cur; else if(ppl[0])fPayer.value=ppl[0].id;
+  $("#indivPerson").innerHTML=ppl.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
+}
+function addPersonByName(name){
+  const id=ensureMember(name);
+  if(!id)return;
+  if(!draftPeople.includes(id))draftPeople.push(id);
+  refreshModalDatalists();
+  renderPeople();renderItemsEdit();
+}
+function removePerson(id){
+  draftPeople=draftPeople.filter(p=>p!==id);
+  draftItems=draftItems.filter(it=>!(it.type==="individual"&&it.memberId===id));
+  draftItems.forEach(it=>{if(it.type==="group")it.participantIds=(it.participantIds||[]).filter(p=>p!==id);});
+  renderPeople();renderItemsEdit();
+}
+$("#addPerson").addEventListener("click",()=>{const v=$("#personAdd").value;$("#personAdd").value="";addPersonByName(v);});
+$("#personAdd").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const v=$("#personAdd").value;$("#personAdd").value="";addPersonByName(v);}});
+
+window.openTxn=function(id){
+  editing=id||null;
+  refreshModalDatalists();
+  if(editing){
+    const t=state.txns.find(x=>x.id===editing);
+    $("#txnModalTitle").textContent="Edit dine-out";
+    $("#fDate").value=t.date||"";
+    $("#fMeal").value=t.meal||"";
+    $("#fPlace").value=t.place||"";
+    draftItems=JSON.parse(JSON.stringify(t.items||[]));
+    const ids=new Set();
+    if(t.payerId)ids.add(t.payerId);
+    draftItems.forEach(it=>{if(it.type==="individual"){if(it.memberId)ids.add(it.memberId);}else (it.participantIds||[]).forEach(p=>ids.add(p));});
+    draftPeople=[...ids].filter(pid=>state.members.some(m=>m.id===pid));
+    scMode=t.serviceCharge.mode;dcMode=t.discount.mode;
+    $("#fSc").value=t.serviceCharge.value;$("#fDc").value=t.discount.value;
+    $("#deleteTxn").style.visibility="visible";
+    renderPeople();
+    $("#fPayer").value=t.payerId||(draftPeople[0]||"");
+  }else{
+    $("#txnModalTitle").textContent="New dine-out";
+    $("#fDate").value=new Date().toISOString().slice(0,10);
+    $("#fMeal").value=state.meals[0]||"";
+    $("#fPlace").value="";
+    draftItems=[];scMode="percent";dcMode="percent";
+    $("#fSc").value=0;$("#fDc").value=0;
+    $("#deleteTxn").style.visibility="hidden";
+    draftPeople=state.members.map(m=>m.id);   // start with the remembered roster
+    renderPeople();
+  }
+  setSeg("#scSeg",scMode);setSeg("#dcSeg",dcMode);
+  renderItemsEdit();renderPreview();
+  $("#txnScrim").classList.add("open");
+};
+function closeTxn(){$("#txnScrim").classList.remove("open");}
+$("#closeTxn").addEventListener("click",closeTxn);
+$("#cancelTxn").addEventListener("click",closeTxn);
+$("#newTxn").addEventListener("click",()=>openTxn());
+$("#txnScrim").addEventListener("click",e=>{if(e.target.id==="txnScrim")closeTxn();});
+
+function setSeg(sel,mode){$$(sel+" button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===mode?"true":"false"));}
+$("#scSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;scMode=b.dataset.m;setSeg("#scSeg",scMode);renderPreview();});
+$("#dcSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;dcMode=b.dataset.m;setSeg("#dcSeg",dcMode);renderPreview();});
+$("#fSc").addEventListener("input",renderPreview);
+$("#fDc").addEventListener("input",renderPreview);
+
+$("#addIndivPerson").addEventListener("click",()=>{
+  const mid=$("#indivPerson").value;if(!mid){toast("Add a person first");return;}
+  draftItems.push({id:uid(),type:"individual",memberId:mid,label:"",amount:""});
+  renderIndivEdit();renderPreview();
+});
+$("#addGroup").addEventListener("click",()=>{draftItems.push({id:uid(),label:"",type:"group",amount:"",participantIds:draftPeople.slice()});renderGroupEdit();renderPreview();});
+
+function renderItemsEdit(){
+  renderIndivEdit();
+  renderGroupEdit();
+  renderPreview();
+}
+
+function blockSub(mid){
+  return draftItems.filter(x=>x.type==="individual"&&(x.memberId||"?")===mid).reduce((a,it)=>a+(Number(it.amount)||0),0);
+}
+function renderIndivEdit(){
+  const box=$("#indivEdit");
+  const indiv=draftItems.filter(it=>it.type==="individual");
+  if(!indiv.length){box.innerHTML='<p class="muted" style="font-size:13px;margin:6px 0 0">No individual orders yet. Pick a person above, then add everything they ordered.</p>';return;}
+  const order=[];const groups={};
+  indiv.forEach(it=>{const k=it.memberId||"?";if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(it);});
+  box.innerHTML=order.map(mid=>{
+    const items=groups[mid];
+    const opts=peopleObjs().map(m=>`<option value="${m.id}" ${m.id===mid?"selected":""}>${esc(m.name)}</option>`).join("");
+    const lines=items.map(it=>`<div class="pb-line" data-id="${it.id}">
+        <input type="text" data-f="label" value="${esc(it.label||"")}" placeholder="e.g. Sisig">
+        <input type="number" data-f="amount" min="0" step="0.01" value="${it.amount}" placeholder="0.00">
+        <button class="iconbtn" data-del="${it.id}" title="Remove item">✕</button>
+      </div>`).join("");
+    return `<div class="person-block" data-mid="${mid}">
+      <div class="pb-head">
+        <select data-changemid="${mid}" title="Change who is charged">${opts}</select>
+        <button class="iconbtn" data-delperson="${mid}" title="Remove this person's orders">✕</button>
+      </div>
+      ${lines}
+      <div class="row" style="justify-content:space-between;align-items:center;margin-top:8px">
+        <button class="btn sm" data-additem="${mid}" type="button">+ Add item</button>
+        <span class="pb-sub">Subtotal ${money(blockSub(mid))}</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  $$(".person-block",box).forEach(blk=>{
+    const mid=blk.dataset.mid;
+    $$(".pb-line",blk).forEach(line=>{
+      const id=line.dataset.id;const it=draftItems.find(x=>x.id===id);
+      $$("[data-f]",line).forEach(inp=>inp.addEventListener("input",()=>{
+        it[inp.dataset.f]=inp.value;
+        const sub=blk.querySelector(".pb-sub");if(sub)sub.textContent="Subtotal "+money(blockSub(mid));
+        renderPreview();
+      }));
+      $("[data-del]",line).addEventListener("click",()=>{draftItems=draftItems.filter(x=>x.id!==id);renderIndivEdit();renderPreview();});
+    });
+    $("[data-additem]",blk).addEventListener("click",()=>{draftItems.push({id:uid(),type:"individual",memberId:mid,label:"",amount:""});renderIndivEdit();renderPreview();});
+    $("[data-delperson]",blk).addEventListener("click",()=>{draftItems=draftItems.filter(x=>!(x.type==="individual"&&(x.memberId||"?")===mid));renderIndivEdit();renderPreview();});
+    $("[data-changemid]",blk).addEventListener("change",e=>{const nm=e.target.value;draftItems.forEach(x=>{if(x.type==="individual"&&(x.memberId||"?")===mid)x.memberId=nm;});renderIndivEdit();renderPreview();});
+  });
+}
+function renderGroupEdit(){
+  const box=$("#groupEdit");
+  const groups=draftItems.filter(it=>it.type==="group");
+  if(!groups.length){box.innerHTML='<p class="muted" style="font-size:13px;margin:6px 0 0">No shared orders yet.</p>';return;}
+  box.innerHTML=groups.map(it=>{
+    const checks=peopleObjs().map(m=>{
+      const on=(it.participantIds||[]).includes(m.id);
+      return `<label class="${on?"on":""}"><input type="checkbox" data-p="${m.id}" ${on?"checked":""}>${esc(m.name)}</label>`;
+    }).join("")||'<span class="muted" style="font-size:13px">Add people above to split this.</span>';
+    return `<div class="item-edit" data-id="${it.id}">
+      <div class="ie-top">
+        <div><label class="field">What (shared)</label><input type="text" data-f="label" value="${esc(it.label||"")}" placeholder="e.g. Platter, drinks"></div>
+        <div><label class="field">Amount</label><input type="number" data-f="amount" min="0" step="0.01" value="${it.amount}"></div>
+        <button class="iconbtn" data-del="${it.id}" title="Remove line">✕</button>
+      </div>
+      <label class="field" style="margin-top:8px">Split evenly between</label>
+      <div class="pchecks">${checks}</div>
+    </div>`;
+  }).join("");
+  $$(".item-edit",box).forEach(card=>{
+    const id=card.dataset.id;const it=draftItems.find(x=>x.id===id);
+    $$("[data-f]",card).forEach(inp=>inp.addEventListener("input",()=>{it[inp.dataset.f]=inp.value;renderPreview();}));
+    $("[data-del]",card).addEventListener("click",()=>{draftItems=draftItems.filter(x=>x.id!==id);renderGroupEdit();renderPreview();});
+    $$("[data-p]",card).forEach(cb=>cb.addEventListener("change",()=>{
+      const pid=cb.dataset.p;it.participantIds=it.participantIds||[];
+      if(cb.checked){if(!it.participantIds.includes(pid))it.participantIds.push(pid);cb.parentElement.classList.add("on");}
+      else{it.participantIds=it.participantIds.filter(x=>x!==pid);cb.parentElement.classList.remove("on");}
+      renderPreview();
+    }));
+  });
+}
+
+function draftTxn(){
+  return {
+    items:draftItems,
+    serviceCharge:{mode:scMode,value:Number($("#fSc").value)||0},
+    discount:{mode:dcMode,value:Number($("#fDc").value)||0},
+    payerId:$("#fPayer").value
+  };
+}
+function renderPreview(){
+  const t=draftTxn();const c=computeTxn(t);
+  const payer=t.payerId;
+  const rows=peopleObjs().map(m=>{
+    const sh=c.shares[m.id];if(!sh)return"";
+    const isPayer=m.id===payer;
+    return `<tr><td>${esc(m.name)}${isPayer?' <span class="status self">paid the bill</span>':""}</td>
+      <td class="right mono">${money(sh.share)}</td></tr>`;
+  }).filter(Boolean).join("")||'<tr><td colspan="2" class="muted">Add order lines to see the split.</td></tr>';
+  $("#previewBox").innerHTML=`
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <span class="muted" style="font-size:13px">Split preview</span>
+      <span class="mono"><b>${money(c.total)}</b> total</span>
+    </div>
+    <table class="lines" style="font-size:13px"><tbody>${rows}</tbody></table>
+    <div class="adjust" style="background:none;border-top:1px dashed var(--line);padding:10px 0 0;margin-top:4px">
+      <div class="grp"><span class="muted">Subtotal</span><span class="v">${money(c.grand)}</span></div>
+      <div class="grp"><span class="muted">Service</span><span class="v">${money(c.service)}</span></div>
+      <div class="grp"><span class="muted">Discount</span><span class="v adj-neg">−${money(c.discount)}</span></div>
+    </div>`;
+}
+
+$("#saveTxn").addEventListener("click",()=>{
+  // drop fully-empty individual rows (no label, no amount)
+  draftItems=draftItems.filter(it=>!(it.type==="individual" && !(Number(it.amount)>0) && !(it.label||"").trim()));
+  const t=draftTxn();
+  if(!draftPeople.length){toast("Add at least one person");return;}
+  if(!t.payerId){toast("Pick who paid the bill");return;}
+  if(!draftItems.length){toast("Add at least one order line");return;}
+  for(const it of draftItems){
+    if(!(Number(it.amount)>0)){toast("Each line needs an amount");return;}
+    if(it.type==="group" && !(it.participantIds||[]).length){toast("Pick who shares each shared line");return;}
+  }
+  const mealVal=($("#fMeal").value||"").trim();
+  rememberMeal(mealVal);   // remember new meal types for next time
+  const base={
+    date:$("#fDate").value,
+    meal:mealVal,
+    place:$("#fPlace").value.trim(),
+    payerId:t.payerId,
+    items:draftItems,
+    serviceCharge:t.serviceCharge,
+    discount:t.discount
+  };
+  if(editing){
+    const ex=state.txns.find(x=>x.id===editing);
+    Object.assign(ex,base);          // keep existing settle records
+    ex.settle=ex.settle||{};
+  }else{
+    base.id=uid();base.settle={};
+    state.txns.push(base);
+  }
+  save();closeTxn();renderTxns();renderSettle();toast("Dine-out saved");
+});
+$("#deleteTxn").addEventListener("click",()=>{
+  if(!editing)return;
+  if(confirm("Delete this dine-out and its settlement records?")){
+    state.txns=state.txns.filter(x=>x.id!==editing);save();closeTxn();renderTxns();renderSettle();toast("Dine-out deleted");
+  }
+});
+
+/* ---------- Settlement report ---------- */
+function getSettle(t,id){t.settle=t.settle||{};t.settle[id]=t.settle[id]||{paid:false,mode:"",received:false};return t.settle[id];}
+
+function renderSettle(){
+  updateCounts();
+  const toolbar=$("#settleToolbar");
+  if(!state.txns.length){toolbar.style.display="none";$("#summaryBox").innerHTML="";$("#settleList").innerHTML='<div class="empty"><h3>Nothing to settle yet</h3><p>Record a dine-out and the amounts each person owes the payer will appear here to track.</p></div>';return;}
+  toolbar.style.display="flex";
+
+  // outstanding obligations per dine-out (debtors whose payment is not yet confirmed)
+  const outItems=[];let outCount=0;
+  state.txns.forEach(t=>{
+    const c=computeTxn(t);let n=0;
+    state.members.forEach(m=>{
+      if(!c.shares[m.id]||m.id===t.payerId)return;
+      const s=t.settle&&t.settle[m.id];
+      if(!(s&&s.received))n++;
+    });
+    if(n>0){outItems.push({id:t.id,place:t.place||"Dine-out",date:t.date||"",count:n});outCount+=n;}
+  });
+
+  const links=outItems.length
+    ? outItems.map(o=>`<button class="out-link no-print" data-goto="${o.id}">${esc(o.place)}${o.date?" · "+esc(o.date):""} <b>(${o.count})</b></button>`).join("")
+    : `<span class="faint" style="font-size:13px">Everyone has paid and the payer confirmed. 🎉</span>`;
+
+  $("#summaryBox").innerHTML=`<div class="summary sum2">
+    <div class="cell out-cell">
+      <div class="k">Still outstanding</div>
+      <div class="v ${outCount?"out":"set"}">${outCount}</div>
+      <div class="k" style="margin-top:2px;text-transform:none;letter-spacing:0">${outCount?("individual payment"+(outCount===1?"":"s")+" not yet confirmed"):"nothing left to settle"}</div>
+      <div class="out-links">${links}</div>
+    </div>
+    <div class="cell"><div class="k">Dine-outs</div><div class="v">${state.txns.length}</div></div>
+  </div>`;
+  $$("#summaryBox [data-goto]").forEach(b=>b.addEventListener("click",()=>gotoSettle(b.dataset.goto)));
+
+  // group by date then meal
+  const sorted=[...state.txns].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  let html='<datalist id="modeDL">'+state.modes.map(x=>`<option value="${esc(x)}">`).join("")+'</datalist>';
+  let lastDate=null;
+  sorted.forEach(t=>{
+    if(t.date!==lastDate){html+=`<h2 class="sec" style="margin:22px 0 8px">${esc(t.date||"No date")}</h2>`;lastDate=t.date;}
+    const c=computeTxn(t);
+    const collapsed=collapsedSettle.has(t.id);
+    const debtors=state.members.filter(m=>c.shares[m.id]&&m.id!==t.payerId);
+    const done=debtors.filter(m=>getSettle(t,m.id).received).length;
+    const pct=debtors.length?Math.round(done/debtors.length*100):100;
+    const hasDisc=c.discount>0.0001;
+
+    // sortable columns (payer row stays pinned on top; only debtors sort)
+    const cols=[
+      {key:"person",label:"Person",cls:""},
+      {key:"orders",label:"Orders",cls:"right bd"},
+      {key:"service",label:"Service",cls:"right bd"},
+      ...(hasDisc?[{key:"discount",label:"Discount",cls:"right bd"}]:[]),
+      {key:"total",label:"Total to pay",cls:"right"},
+      {key:"paid",label:"Paid",cls:"center"},
+      {key:"mode",label:"Mode of payment",cls:""},
+      {key:"received",label:"Received",cls:"center"},
+      {key:"status",label:"Status",cls:""},
+    ];
+    const sval=m=>{const sh=c.shares[m.id],s=getSettle(t,m.id);return k=>{
+      switch(k){
+        case "person":return m.name.toLowerCase();
+        case "orders":return sh.subtotal;
+        case "service":return sh.service;
+        case "discount":return sh.discount;
+        case "total":return sh.share;
+        case "paid":return s.paid?1:0;
+        case "mode":return (s.mode||"").toLowerCase();
+        case "received":return s.received?1:0;
+        case "status":return s.received?2:(s.paid?1:0);
+      }
+    };};
+    const ss=settleSort[t.id];
+    let dordered=debtors;
+    if(ss){
+      dordered=[...debtors].sort((a,b)=>{
+        const va=sval(a)(ss.key),vb=sval(b)(ss.key);
+        const cmp=(typeof va==="number")?(va-vb):String(va).localeCompare(String(vb));
+        return cmp*ss.dir;
+      });
+    }
+    const arrow=k=>ss&&ss.key===k?(ss.dir>0?"▲":"▼"):"↕";
+    const sortedCls=k=>ss&&ss.key===k?"sorted":"";
+
+    // breakdown cells (orders + service [+ discount] = total to pay)
+    const breakdown=sh=>`
+        <td class="amt right bd">${money(sh.subtotal)}</td>
+        <td class="amt right bd">${money(sh.service)}</td>
+        ${hasDisc?`<td class="amt right bd adj-neg">−${money(sh.discount)}</td>`:""}
+        <td class="amt right">${money(sh.share)}</td>`;
+
+    // payer (payee) row — they fronted the bill, so no need to pay anyone
+    const pSh=c.shares[t.payerId]||{subtotal:0,service:0,discount:0,share:0};
+    const payerRow=`<tr class="payer-row">
+      <td><span class="who-name">${esc(memberName(t.payerId))}</span> <span class="crown">★ paid the bill</span></td>
+      ${breakdown(pSh)}
+      <td class="center faint">—</td>
+      <td class="faint" style="font-size:13px">covered the full bill</td>
+      <td class="center faint">—</td>
+      <td><span class="status nopay">no need to pay</span></td>
+    </tr>`;
+
+    const rows=dordered.map(m=>{
+      const sh=c.shares[m.id];const s=getSettle(t,m.id);
+      const st=s.received?'<span class="status confirmed">confirmed</span>':s.paid?'<span class="status paid">paid · awaiting</span>':'<span class="status pending">pending</span>';
+      return `<tr>
+        <td>${esc(m.name)}</td>
+        ${breakdown(sh)}
+        <td class="center"><span class="check"><input type="checkbox" data-t="${t.id}" data-m="${m.id}" data-k="paid" ${s.paid?"checked":""}></span></td>
+        <td><input class="modeinput" list="modeDL" data-t="${t.id}" data-m="${m.id}" data-k="mode" value="${esc(s.mode||"")}" placeholder="mode…" autocomplete="off"></td>
+        <td class="center"><span class="check"><input type="checkbox" data-t="${t.id}" data-m="${m.id}" data-k="received" ${s.received?"checked":""}></span></td>
+        <td>${st}</td>
+      </tr>`;
+    }).join("");
+
+    const colHead=cols.map(col=>`<th class="sortable ${col.cls} ${sortedCls(col.key)}" data-ssort="${col.key}" data-t="${t.id}">${col.label} <span class="arrow">${arrow(col.key)}</span></th>`).join("");
+
+    html+=`<div class="card settle-block" id="settle-${t.id}">
+      <div class="sb-head click" data-toggle="${t.id}">
+        <div class="meta">
+          <button class="caret ${collapsed?"closed":""} no-print" aria-label="Expand or collapse">▼</button>
+          <span class="badge meal">${esc(t.meal||"—")}</span>
+          <span class="txn-title" style="font-size:15px">${esc(t.place||"Dine-out")}</span>
+          <span class="paidby">paid by <b>${esc(memberName(t.payerId))}</b> · service ${money(c.service)} · total ${money(c.total)}</span>
+        </div>
+        <div class="progress"><span>${done}/${debtors.length}</span><span class="bar"><i style="width:${pct}%"></i></span></div>
+      </div>
+      <div class="collapsible-body ${collapsed?"hidden":""}">
+        <table class="settle">
+          <thead><tr>${colHead}</tr></thead>
+          <tbody>${payerRow}${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  });
+  $("#settleList").innerHTML=html;
+
+  $$("#settleList .sb-head[data-toggle]").forEach(h=>h.addEventListener("click",e=>{
+    if(e.target.closest("input,select,a"))return;
+    const id=h.dataset.toggle;
+    if(collapsedSettle.has(id))collapsedSettle.delete(id);else collapsedSettle.add(id);
+    renderSettle();
+  }));
+
+  $$("#settleList th.sortable[data-ssort]").forEach(th=>th.addEventListener("click",()=>{
+    const tid=th.dataset.t,key=th.dataset.ssort;const cur=settleSort[tid];
+    if(cur&&cur.key===key)cur.dir*=-1;else settleSort[tid]={key,dir:1};
+    collapsedSettle.delete(tid);
+    renderSettle();
+  }));
+
+  $$("#settleList input[type=checkbox], #settleList .modeinput").forEach(el=>{
+    el.addEventListener("change",()=>{
+      const t=state.txns.find(x=>x.id===el.dataset.t);if(!t)return;
+      const s=getSettle(t,el.dataset.m);const k=el.dataset.k;
+      if(k==="mode"){s.mode=(el.value||"").trim();rememberMode(s.mode);}   // remember new modes
+      else{
+        s[k]=el.checked;
+        if(k==="received"&&el.checked)s.paid=true;     // received implies paid
+        if(k==="paid"&&!el.checked)s.received=false;    // un-paying clears receipt
+      }
+      save();renderSettle();updateCounts();
+    });
+  });
+}
+$("#expandAllSettle").addEventListener("click",()=>{collapsedSettle.clear();renderSettle();});
+$("#collapseAllSettle").addEventListener("click",()=>{state.txns.forEach(t=>collapsedSettle.add(t.id));renderSettle();});
+
+/* CSV + print */
+$("#exportCsv").addEventListener("click",()=>{
+  const rows=[["Date","Meal","Place","Payer","Person","Orders","Service","Discount","Total to pay","Paid","Mode","Received","Status"]];
+  const f=n=>(Math.round((n||0)*100)/100).toFixed(2);
+  [...state.txns].sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(t=>{
+    const c=computeTxn(t);
+    // payer row first
+    const p=c.shares[t.payerId]||{subtotal:0,service:0,discount:0,share:0};
+    rows.push([t.date||"",t.meal||"",t.place||"",memberName(t.payerId),memberName(t.payerId)+" (payer)",f(p.subtotal),f(p.service),f(p.discount),f(p.share),"—","Paid full bill","—","No need to pay"]);
+    state.members.forEach(m=>{
+      if(!c.shares[m.id]||m.id===t.payerId)return;
+      const sh=c.shares[m.id];const s=getSettle(t,m.id);
+      const st=s.received?"Confirmed":s.paid?"Paid - awaiting":"Pending";
+      rows.push([t.date||"",t.meal||"",t.place||"",memberName(t.payerId),m.name,f(sh.subtotal),f(sh.service),f(sh.discount),f(sh.share),s.paid?"Yes":"No",s.mode||"",s.received?"Yes":"No",st]);
+    });
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");
+  const blob=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download="settlement-"+new Date().toISOString().slice(0,10)+".csv";a.click();
+});
+$("#printReport").addEventListener("click",()=>{$$("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab==="settle"?"true":"false"));$$(".panel").forEach(p=>p.classList.toggle("active",p.id==="panel-settle"));renderSettle();window.print();});
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+// On a full (re)load, fold away anything already finished so attention stays on what's outstanding.
+function applyCompletedCollapse(){
+  state.txns.forEach(t=>{
+    const st=settleStatus(t);
+    if(st.cls==="done"||st.cls==="none"){collapsedTxn.add(t.id);collapsedSettle.add(t.id);}
+  });
+}
+
+function renderAll(){$("#curInput").value=state.currency;applyCompletedCollapse();renderTxns();renderSettle();updateCounts();}
+initTheme();
+bindTheme();
+bootAuth();
+</script>
+</body>
+</html>
