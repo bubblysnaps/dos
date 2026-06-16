@@ -239,6 +239,7 @@
   .gate-msg.err{color:var(--danger)} .gate-msg.ok{color:var(--accent)}
   .gate-foot{margin-top:16px;font-size:13px;color:var(--muted)}
   .gate-foot a{color:var(--accent);cursor:pointer;font-weight:600}
+  .pin-in{letter-spacing:.45em;text-align:center;font-size:20px;font-family:var(--mono)}
   .groups-wrap{max-width:680px;margin:0 auto;padding:40px 20px}
   .group-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:10px;cursor:pointer}
   .group-row:hover{border-color:var(--accent)}
@@ -355,12 +356,21 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="manifest" href="/site.webmanifest">
 </head>
 <body>
+
+<!-- ===== PIN GATE ===== -->
+<div id="pinView" class="gate" style="display:none">
+  <div class="gate-card">
+    <h1>Split the Tab</h1>
+    <div class="tag">enter access PIN</div>
+    <div class="field"><label class="field" style="margin:0 0 5px">Access PIN</label>
+      <input type="password" id="pinInput" class="pin-in" inputmode="numeric" autocomplete="off" placeholder="••••"></div>
+    <button class="btn primary" id="pinUnlock" style="width:100%;margin-top:14px">Unlock</button>
+    <div class="gate-msg" id="pinMsg"></div>
+    <div class="gate-foot">A shared front-door code for the group. Ask the organiser if you don't have it.</div>
+  </div>
+</div>
 
 <!-- ===== LOGIN ===== -->
 <div id="authView" class="gate" style="display:none">
@@ -371,10 +381,24 @@
     <div class="field"><label class="field" style="margin:0 0 5px">Password</label><input type="password" id="authPass" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="row" style="margin-top:16px;gap:8px">
       <button class="btn primary" id="btnSignIn" style="flex:1">Sign in</button>
-      <button class="btn" id="btnSignUp" style="flex:1">Create account</button>
+      <button class="btn" id="btnRequest" style="flex:1">Request access</button>
     </div>
     <div class="gate-msg" id="authMsg"></div>
-    <div class="gate-foot">Use the same login on any device or browser to reach your shared groups.</div>
+    <div class="gate-foot">New here? Request access — an admin reviews requests and emails you an invite. Already invited? Sign in.</div>
+  </div>
+</div>
+
+<!-- ===== AWAITING APPROVAL ===== -->
+<div id="pendingView" class="gate" style="display:none">
+  <div class="gate-card">
+    <h1>Almost there</h1>
+    <div class="tag">awaiting approval</div>
+    <p class="muted" style="font-size:14px;margin-top:12px">Your account <b id="pendingEmail"></b> is signed in but still needs an admin to approve access. You'll get in as soon as you're approved.</p>
+    <div class="row" style="margin-top:16px;gap:8px">
+      <button class="btn primary" id="pendingCheck" style="flex:1">Check again</button>
+      <button class="btn" id="pendingSignOut" style="flex:1">Sign out</button>
+    </div>
+    <div class="gate-msg" id="pendingMsg"></div>
   </div>
 </div>
 
@@ -559,6 +583,12 @@ const THEME_KEY="splitTheTab.theme.v1";
 const SUPABASE_URL = "https://oszmxhllsoiycteiweck.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zem14aGxsc29peWN0ZWl3ZWNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODUyMTUsImV4cCI6MjA5Njc2MTIxNX0.snH8HVtHeUA1ow56SWrgmflwr1NN0C-42z-uaCs1Gas";
 
+/* Front-door PIN shown before the login screen.
+   Change this to your own code. Set to "" to disable the PIN gate.
+   Note: this is a light shared gate, not real security — accounts and data
+   are protected by Supabase login + the database rules. */
+const ACCESS_PIN = "3579";
+
 let sb=null;
 function initSupabase(){
   if(!window.supabase) return false;
@@ -616,13 +646,36 @@ function bindTheme(){
 
 /* ---------- Views ---------- */
 function showView(v){
+  $("#pinView").style.display = v==="pin"?"flex":"none";
   $("#authView").style.display = v==="auth"?"flex":"none";
+  $("#pendingView").style.display = v==="pending"?"flex":"none";
   $("#groupsView").style.display = v==="groups"?"block":"none";
   $("#appView").style.display = v==="app"?"block":"none";
 }
 function amsg(t,err){const e=$("#authMsg");e.textContent=t||"";e.className="gate-msg "+(err?"err":"ok");}
 function gmsg(t,err){const e=$("#groupsMsg");e.textContent=t||"";e.className="gate-msg "+(err?"err":"ok");}
 const val=s=>($(s).value||"").trim();
+
+/* ---------- PIN front door (shown before login) ---------- */
+function pinUnlocked(){try{return sessionStorage.getItem("stt.pin.ok")==="1";}catch(e){return false;}}
+function startGate(){
+  if(!ACCESS_PIN || pinUnlocked()){bootAuth();return;}
+  showView("pin");
+  setTimeout(()=>{const i=$("#pinInput");if(i)i.focus();},60);
+}
+function submitPin(){
+  const v=($("#pinInput").value||"").trim();
+  if(v===String(ACCESS_PIN)){
+    try{sessionStorage.setItem("stt.pin.ok","1");}catch(e){}
+    $("#pinMsg").textContent="";$("#pinInput").value="";
+    bootAuth();
+  }else{
+    const m=$("#pinMsg");m.textContent="Incorrect PIN.";m.className="gate-msg err";
+    $("#pinInput").value="";$("#pinInput").focus();
+  }
+}
+$("#pinUnlock").addEventListener("click",submitPin);
+$("#pinInput").addEventListener("keydown",e=>{if(e.key==="Enter")submitPin();});
 
 /* ---------- Cloud data layer ---------- */
 // Save is debounced; writes the whole group document. Last write wins.
@@ -681,18 +734,38 @@ async function bootAuth(){
   if(!initSupabase()){
     showView("auth");
     amsg("This page isn't configured yet. Open the HTML file and paste your Supabase URL and anon key into the CONFIG section near the top of the script (see the setup steps).",true);
-    $("#btnSignIn").disabled=$("#btnSignUp").disabled=true;
+    $("#btnSignIn").disabled=$("#btnRequest").disabled=true;
     return;
   }
   sb.auth.onAuthStateChange((_e,session)=>handleSession(session));
   const {data}=await sb.auth.getSession();
   handleSession(data?data.session:null);
 }
-function handleSession(session){
+async function handleSession(session){
   me=session?session.user:null;
-  if(me){const w=$("#whoBadge");if(w)w.textContent="Signed in as "+me.email;showView("groups");listGroups();}
-  else {showView("auth");}
+  if(!me){showView("auth");return;}
+  // belt-and-suspenders: account must be approved by an admin
+  let approved=false;
+  try{
+    const {data}=await sb.from("profiles").select("approved").eq("id",me.id).single();
+    approved = !!(data && data.approved);
+  }catch(e){ approved=false; }
+  if(!approved){
+    const pe=$("#pendingEmail");if(pe)pe.textContent=me.email||"";
+    $("#pendingMsg").textContent="";
+    showView("pending");
+    return;
+  }
+  const w=$("#whoBadge");if(w)w.textContent="Signed in as "+me.email;
+  showView("groups");listGroups();
 }
+$("#pendingCheck").addEventListener("click",async()=>{
+  $("#pendingMsg").textContent="Checking…";$("#pendingMsg").className="gate-msg";
+  const {data}=await sb.auth.getSession();
+  await handleSession(data?data.session:null);
+  if($("#pendingView").style.display!=="none"){const m=$("#pendingMsg");m.textContent="Not approved yet — please check back later.";m.className="gate-msg";}
+});
+$("#pendingSignOut").addEventListener("click",async()=>{await sb.auth.signOut();});
 $("#btnSignIn").addEventListener("click",async()=>{
   const email=val("#authEmail"),password=$("#authPass").value;
   if(!email||!password){amsg("Enter your email and password.",true);return;}
@@ -700,14 +773,13 @@ $("#btnSignIn").addEventListener("click",async()=>{
   const {error}=await sb.auth.signInWithPassword({email,password});
   if(error)amsg(error.message,true);
 });
-$("#btnSignUp").addEventListener("click",async()=>{
-  const email=val("#authEmail"),password=$("#authPass").value;
-  if(!email||password.length<6){amsg("Enter an email and a password of at least 6 characters.",true);return;}
-  amsg("Creating account…");
-  const {data,error}=await sb.auth.signUp({email,password});
-  if(error){amsg(error.message,true);return;}
-  if(data && data.session){amsg("Account created — you're in.","ok");}
-  else {amsg("Account created. Check your email to confirm, then sign in.","ok");}
+$("#btnRequest").addEventListener("click",async()=>{
+  const email=val("#authEmail");
+  if(!email){amsg("Enter your email to request access.",true);return;}
+  amsg("Sending request…");
+  const {error}=await sb.from("access_requests").insert({email});
+  if(error){amsg("Could not send request: "+error.message,true);return;}
+  amsg("Request sent. An admin will review it and email you an invite to set up your account.","ok");
 });
 $("#authPass").addEventListener("keydown",e=>{if(e.key==="Enter")$("#btnSignIn").click();});
 $("#btnSignOut").addEventListener("click",async()=>{await sb.auth.signOut();});
@@ -1519,7 +1591,7 @@ function applyCompletedCollapse(){
 function renderAll(){$("#curInput").value=state.currency;applyCompletedCollapse();renderTxns();renderSettle();updateCounts();}
 initTheme();
 bindTheme();
-bootAuth();
+startGate();
 </script>
 </body>
 </html>
