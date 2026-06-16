@@ -857,11 +857,20 @@ function computeTxn(txn){
   const discount=dc.mode==="percent"?grand*(Number(dc.value)||0)/100:(Number(dc.value)||0);
   const total=grand+service-discount;
 
+  // people in the group: stored list (fallback: payer + everyone who appears in an order)
+  const groupSet=new Set(txnPeople(txn));
+  Object.keys(subtotals).forEach(id=>groupSet.add(id));
+  const ids=[...groupSet].filter(id=>state.members.some(m=>m.id===id));
+  const n=ids.length;
+  // service charge is split EQUALLY per head, regardless of what each person ordered;
+  // discount stays proportional to each person's orders.
+  const servicePer = n>0 ? service/n : 0;
+
   // raw shares in cents
-  const ids=Object.keys(subtotals);
   const raw=ids.map(id=>{
-    const factor=grand>0?subtotals[id]/grand:0;
-    return (subtotals[id]+service*factor-discount*factor)*100;
+    const sub=subtotals[id]||0;
+    const factor=grand>0?sub/grand:0;
+    return (sub + servicePer - discount*factor)*100;
   });
   const floors=raw.map(r=>Math.floor(r));
   let sumFloors=floors.reduce((a,b)=>a+b,0);
@@ -875,10 +884,22 @@ function computeTxn(txn){
 
   const shares={};
   ids.forEach((id,i)=>{
-    const factor=grand>0?subtotals[id]/grand:0;
-    shares[id]={subtotal:subtotals[id],service:service*factor,discount:discount*factor,share:floors[i]/100};
+    const sub=subtotals[id]||0;
+    const factor=grand>0?sub/grand:0;
+    shares[id]={subtotal:sub,service:servicePer,discount:discount*factor,share:floors[i]/100};
   });
   return {grand,service,discount,total,shares};
+}
+// the set of people in a dine-out (explicit list if saved, else derived)
+function txnPeople(txn){
+  if(Array.isArray(txn.people) && txn.people.length) return txn.people.slice();
+  const s=new Set();
+  if(txn.payerId)s.add(txn.payerId);
+  (txn.items||[]).forEach(it=>{
+    if(it.type==="individual"){if(it.memberId)s.add(it.memberId);}
+    else (it.participantIds||[]).forEach(p=>s.add(p));
+  });
+  return [...s];
 }
 
 /* ---------- Render: tabs ---------- */
@@ -1320,6 +1341,7 @@ function renderGroupEdit(){
 function draftTxn(){
   return {
     items:draftItems,
+    people:draftPeople.slice(),
     serviceCharge:{mode:scMode,value:Number($("#fSc").value)||0},
     discount:{mode:dcMode,value:Number($("#fDc").value)||0},
     payerId:$("#fPayer").value
@@ -1365,6 +1387,7 @@ $("#saveTxn").addEventListener("click",()=>{
     meal:mealVal,
     place:$("#fPlace").value.trim(),
     payerId:t.payerId,
+    people:draftPeople.slice(),
     items:draftItems,
     serviceCharge:t.serviceCharge,
     discount:t.discount
