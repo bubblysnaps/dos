@@ -408,6 +408,7 @@
     <div class="topbar">
       <div><h1 style="margin:0;font-size:22px">Your groups</h1><div class="who-badge" id="whoBadge"></div></div>
       <div class="row">
+        <button class="btn sm" id="btnAdmin" style="display:none">Pending approvals</button>
         <button class="theme-toggle" id="themeToggle2" aria-label="Toggle dark mode" title="Toggle dark / light">🌙</button>
         <button class="btn sm" id="btnSignOut">Sign out</button>
       </div>
@@ -569,6 +570,21 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ===== ADMIN: pending approvals ===== -->
+<div class="scrim" id="adminScrim">
+  <div class="modal" role="dialog" aria-modal="true" style="max-width:480px">
+    <div class="modal-head">
+      <h3>Pending approvals</h3>
+      <button class="iconbtn" id="closeAdmin" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="adminBody"></div>
+    <div class="modal-foot">
+      <span class="muted" style="font-size:12px">Approve who can sign in and use the app.</span>
+      <button class="btn sm" id="refreshAdmin">Refresh</button>
+    </div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -745,11 +761,13 @@ async function handleSession(session){
   me=session?session.user:null;
   if(!me){showView("auth");return;}
   // belt-and-suspenders: account must be approved by an admin
-  let approved=false;
+  let approved=false, admin=false;
   try{
-    const {data}=await sb.from("profiles").select("approved").eq("id",me.id).single();
+    const {data}=await sb.from("profiles").select("approved,is_admin").eq("id",me.id).single();
     approved = !!(data && data.approved);
-  }catch(e){ approved=false; }
+    admin = !!(data && data.is_admin);
+  }catch(e){ approved=false; admin=false; }
+  meAdmin=admin;
   if(!approved){
     const pe=$("#pendingEmail");if(pe)pe.textContent=me.email||"";
     $("#pendingMsg").textContent="";
@@ -757,8 +775,33 @@ async function handleSession(session){
     return;
   }
   const w=$("#whoBadge");if(w)w.textContent="Signed in as "+me.email;
+  $("#btnAdmin").style.display=meAdmin?"":"none";
   showView("groups");listGroups();
 }
+
+/* ---------- Admin: approve pending accounts ---------- */
+let meAdmin=false;
+async function loadPending(){
+  const body=$("#adminBody");
+  body.innerHTML='<p class="muted" style="font-size:13px">Loading…</p>';
+  const {data,error}=await sb.rpc("list_pending");
+  if(error){body.innerHTML='<p class="gate-msg err" style="margin:0">'+esc(error.message)+'</p>';return;}
+  if(!data || !data.length){body.innerHTML='<p class="muted" style="font-size:14px;margin:0">No one is waiting for approval. 🎉</p>';return;}
+  body.innerHTML=data.map(u=>`<div class="group-row" style="cursor:default">
+      <div><div class="gname">${esc(u.email||"(no email)")}</div><div class="gmeta">requested ${esc((u.created_at||"").slice(0,10))}</div></div>
+      <button class="btn sm primary" data-approve="${u.id}">Approve</button>
+    </div>`).join("");
+  $$("[data-approve]",body).forEach(b=>b.addEventListener("click",async()=>{
+    b.disabled=true;b.textContent="…";
+    const {error}=await sb.rpc("approve_user",{p_id:b.dataset.approve});
+    if(error){toast(error.message);b.disabled=false;b.textContent="Approve";return;}
+    toast("Approved");loadPending();
+  }));
+}
+$("#btnAdmin").addEventListener("click",()=>{$("#adminScrim").classList.add("open");loadPending();});
+$("#closeAdmin").addEventListener("click",()=>$("#adminScrim").classList.remove("open"));
+$("#refreshAdmin").addEventListener("click",loadPending);
+$("#adminScrim").addEventListener("click",e=>{if(e.target.id==="adminScrim")$("#adminScrim").classList.remove("open");});
 $("#pendingCheck").addEventListener("click",async()=>{
   $("#pendingMsg").textContent="Checking…";$("#pendingMsg").className="gate-msg";
   const {data}=await sb.auth.getSession();
