@@ -555,6 +555,15 @@
         </div>
       </div>
 
+      <div class="subsec" style="margin-top:16px">
+        <div class="subhead">Receipt photo (optional)</div>
+        <label class="btn sm" style="margin:0">📷 Add receipt<input type="file" id="receiptFile" accept="image/*" hidden></label>
+        <div id="receiptPreview" style="display:none;margin-top:10px">
+          <img id="receiptThumb" alt="receipt preview" style="max-height:150px;max-width:100%;border-radius:8px;border:1px solid var(--line);display:block">
+          <div class="row" style="margin-top:8px"><button class="btn sm" type="button" id="receiptRemove">Remove photo</button></div>
+        </div>
+      </div>
+
       <div class="card" style="margin-top:18px;box-shadow:none;background:var(--bg)">
         <div class="pad" id="previewBox"></div>
       </div>
@@ -570,6 +579,11 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ===== Receipt lightbox ===== -->
+<div class="scrim" id="lightScrim" style="align-items:center">
+  <img id="lightImg" alt="receipt" style="max-width:92vw;max-height:88vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+</div>
 
 <!-- ===== ADMIN: pending approvals ===== -->
 <div class="scrim" id="adminScrim">
@@ -1053,6 +1067,7 @@ function renderTxns(){
         <div class="row">
           <div class="txn-total"><div class="amt">${money(c.total)}</div><div class="lbl">total bill</div></div>
           <div class="log-actions no-print">
+            ${t.receipt?`<button class="btn sm" data-receipt="${esc(t.receipt)}" title="View receipt">🧾</button>`:""}
             <button class="btn sm" data-share="${t.id}" title="Share summary">Share</button>
             <button class="btn sm" data-pdf="${t.id}" title="Save / print as PDF">PDF</button>
             <button class="btn ghost sm" onclick="openTxn('${t.id}')">Edit</button>
@@ -1090,12 +1105,22 @@ function renderTxns(){
     if(collapsedTxn.has(tid))collapsedTxn.delete(tid); // keep visible when sorting
     renderTxns();
   }));
-  // share / pdf per log
+  // share / pdf / receipt per log
   $$("[data-share]",list).forEach(b=>b.addEventListener("click",()=>shareLog(b.dataset.share)));
   $$("[data-pdf]",list).forEach(b=>b.addEventListener("click",()=>pdfLog(b.dataset.pdf)));
   $$("[data-settle]",list).forEach(b=>b.addEventListener("click",()=>gotoSettle(b.dataset.settle)));
+  $$("[data-receipt]",list).forEach(b=>b.addEventListener("click",()=>viewReceipt(b.dataset.receipt)));
   updateCounts();
 }
+async function viewReceipt(path){
+  if(!sb||!path)return;
+  toast("Loading receipt…");
+  const {data,error}=await sb.storage.from("receipts").createSignedUrl(path,300);
+  if(error||!data){toast("Could not load receipt");return;}
+  $("#lightImg").src=data.signedUrl;
+  $("#lightScrim").classList.add("open");
+}
+$("#lightScrim").addEventListener("click",()=>{$("#lightScrim").classList.remove("open");$("#lightImg").src="";});
 function gotoSettle(id){
   const tabs=$$("nav.tabs button");
   tabs.forEach(x=>x.setAttribute("aria-selected",x.dataset.tab==="settle"?"true":"false"));
@@ -1210,6 +1235,59 @@ let editing=null; // txn id or null
 let draftItems=[];
 let draftPeople=[]; // member ids taking part in this draft
 let scMode="percent",dcMode="percent";
+let draftReceiptBlob=null;     // newly chosen (compressed) image awaiting upload
+let draftReceiptPath="";       // existing storage path when editing
+let draftReceiptRemoved=false; // user cleared an existing receipt
+
+// shrink a photo in the browser before upload (keeps uploads small & fast)
+function compressImage(file,maxDim=1600,quality=0.8){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.width,h=img.height;
+      if(w>maxDim||h>maxDim){const s=Math.min(maxDim/w,maxDim/h);w=Math.round(w*s);h=Math.round(h*s);}
+      const cv=document.createElement("canvas");cv.width=w;cv.height=h;
+      cv.getContext("2d").drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      cv.toBlob(b=>b?resolve(b):reject(new Error("compress failed")),"image/jpeg",quality);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("not an image"));};
+    img.src=url;
+  });
+}
+function showReceiptPreview(src){
+  $("#receiptThumb").src=src;
+  $("#receiptPreview").style.display="";
+}
+function resetReceiptUI(){
+  draftReceiptBlob=null;draftReceiptPath="";draftReceiptRemoved=false;
+  $("#receiptFile").value="";
+  $("#receiptThumb").src="";
+  $("#receiptPreview").style.display="none";
+}
+$("#receiptFile").addEventListener("change",async e=>{
+  const f=e.target.files&&e.target.files[0];if(!f)return;
+  try{
+    const blob=await compressImage(f);
+    draftReceiptBlob=blob;draftReceiptRemoved=false;
+    showReceiptPreview(URL.createObjectURL(blob));
+  }catch(err){toast("That file isn't a readable image");}
+});
+$("#receiptRemove").addEventListener("click",()=>{
+  draftReceiptBlob=null;
+  draftReceiptRemoved=true;          // mark existing one for deletion on save
+  $("#receiptFile").value="";
+  $("#receiptThumb").src="";
+  $("#receiptPreview").style.display="none";
+});
+async function loadReceiptThumb(path){
+  if(!sb||!path)return;
+  try{
+    const {data}=await sb.storage.from("receipts").createSignedUrl(path,300);
+    if(data&&data.signedUrl)showReceiptPreview(data.signedUrl);
+  }catch(e){}
+}
 
 function peopleObjs(){return draftPeople.map(pid=>state.members.find(m=>m.id===pid)).filter(Boolean);}
 function refreshModalDatalists(){
@@ -1247,12 +1325,14 @@ $("#personAdd").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefa
 window.openTxn=function(id){
   editing=id||null;
   refreshModalDatalists();
+  resetReceiptUI();
   if(editing){
     const t=state.txns.find(x=>x.id===editing);
     $("#txnModalTitle").textContent="Edit dine-out";
     $("#fDate").value=t.date||"";
     $("#fMeal").value=t.meal||"";
     $("#fPlace").value=t.place||"";
+    if(t.receipt){draftReceiptPath=t.receipt;loadReceiptThumb(t.receipt);}
     draftItems=JSON.parse(JSON.stringify(t.items||[]));
     const ids=new Set();
     if(t.payerId)ids.add(t.payerId);
@@ -1412,7 +1492,7 @@ function renderPreview(){
     </div>`;
 }
 
-$("#saveTxn").addEventListener("click",()=>{
+$("#saveTxn").addEventListener("click",async()=>{
   // drop fully-empty individual rows (no label, no amount)
   draftItems=draftItems.filter(it=>!(it.type==="individual" && !(Number(it.amount)>0) && !(it.label||"").trim()));
   const t=draftTxn();
@@ -1425,6 +1505,24 @@ $("#saveTxn").addEventListener("click",()=>{
   }
   const mealVal=($("#fMeal").value||"").trim();
   rememberMeal(mealVal);   // remember new meal types for next time
+
+  // ---- receipt photo: upload new / replace / remove ----
+  let receiptPath = draftReceiptPath;   // existing one (if editing)
+  const saveBtn=$("#saveTxn");
+  try{
+    if(draftReceiptBlob){
+      saveBtn.disabled=true;saveBtn.textContent="Uploading…";
+      const newPath=currentGroup.id+"/"+uid()+".jpg";
+      const {error:upErr}=await sb.storage.from("receipts").upload(newPath,draftReceiptBlob,{contentType:"image/jpeg",upsert:true});
+      if(upErr){toast("Receipt upload failed: "+upErr.message);saveBtn.disabled=false;saveBtn.textContent="Save dine-out";return;}
+      if(draftReceiptPath){try{await sb.storage.from("receipts").remove([draftReceiptPath]);}catch(e){}}
+      receiptPath=newPath;
+    }else if(draftReceiptRemoved && draftReceiptPath){
+      try{await sb.storage.from("receipts").remove([draftReceiptPath]);}catch(e){}
+      receiptPath="";
+    }
+  }finally{saveBtn.disabled=false;saveBtn.textContent="Save dine-out";}
+
   const base={
     date:$("#fDate").value,
     meal:mealVal,
@@ -1433,7 +1531,8 @@ $("#saveTxn").addEventListener("click",()=>{
     people:draftPeople.slice(),
     items:draftItems,
     serviceCharge:t.serviceCharge,
-    discount:t.discount
+    discount:t.discount,
+    receipt:receiptPath||""
   };
   if(editing){
     const ex=state.txns.find(x=>x.id===editing);
@@ -1445,9 +1544,11 @@ $("#saveTxn").addEventListener("click",()=>{
   }
   save();closeTxn();renderTxns();renderSettle();toast("Dine-out saved");
 });
-$("#deleteTxn").addEventListener("click",()=>{
+$("#deleteTxn").addEventListener("click",async()=>{
   if(!editing)return;
   if(confirm("Delete this dine-out and its settlement records?")){
+    const ex=state.txns.find(x=>x.id===editing);
+    if(ex&&ex.receipt){try{await sb.storage.from("receipts").remove([ex.receipt]);}catch(e){}}
     state.txns=state.txns.filter(x=>x.id!==editing);save();closeTxn();renderTxns();renderSettle();toast("Dine-out deleted");
   }
 });
@@ -1661,3 +1762,4 @@ startGate();
 </script>
 </body>
 </html>
+
