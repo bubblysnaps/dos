@@ -688,7 +688,8 @@ function gmsg(t,err){const e=$("#groupsMsg");e.textContent=t||"";e.className="ga
 const val=s=>($(s).value||"").trim();
 
 /* ---------- PIN front door (shown before login) ---------- */
-function pinUnlocked(){try{return sessionStorage.getItem("stt.pin.ok")==="1";}catch(e){return false;}}
+// remembered on the device so returning (or a mobile reload) doesn't re-prompt
+function pinUnlocked(){try{return localStorage.getItem("stt.pin.ok")==="1";}catch(e){return false;}}
 function startGate(){
   if(!ACCESS_PIN || pinUnlocked()){bootAuth();return;}
   showView("pin");
@@ -697,7 +698,7 @@ function startGate(){
 function submitPin(){
   const v=($("#pinInput").value||"").trim();
   if(v===String(ACCESS_PIN)){
-    try{sessionStorage.setItem("stt.pin.ok","1");}catch(e){}
+    try{localStorage.setItem("stt.pin.ok","1");}catch(e){}
     $("#pinMsg").textContent="";$("#pinInput").value="";
     bootAuth();
   }else{
@@ -749,6 +750,7 @@ async function openGroup(g){
   for(const k in lineSort)delete lineSort[k];
   for(const k in settleSort)delete settleSort[k];
   subscribeGroup(data.id);
+  try{localStorage.setItem("stt.group",data.id);}catch(e){}   // remember where we are
   $("#appGroupName").textContent=currentGroup.name;
   showView("app");setSync("on");
   $$("nav.tabs button").forEach((b,i)=>b.setAttribute("aria-selected",i===0?"true":"false"));
@@ -757,6 +759,7 @@ async function openGroup(g){
 }
 function backToGroups(){
   if(channel){try{sb.removeChannel(channel);}catch(e){}channel=null;}
+  try{localStorage.removeItem("stt.group");}catch(e){}
   currentGroup=null;showView("groups");listGroups();
 }
 
@@ -791,7 +794,10 @@ async function handleSession(session){
   }
   const w=$("#whoBadge");if(w)w.textContent="Signed in as "+me.email;
   $("#btnAdmin").style.display=meAdmin?"":"none";
-  showView("groups");listGroups();
+  let restore=null;try{restore=localStorage.getItem("stt.group");}catch(e){}
+  if(currentGroup && restore && currentGroup.id===restore) return;  // already in that group; don't bounce out
+  showView("groups");
+  listGroups(restore);   // if a group was open before a reload, re-open it
 }
 
 /* ---------- Admin: approve pending accounts ---------- */
@@ -840,11 +846,11 @@ $("#btnRequest").addEventListener("click",async()=>{
   amsg("Request sent. An admin will review it and email you an invite to set up your account.","ok");
 });
 $("#authPass").addEventListener("keydown",e=>{if(e.key==="Enter")$("#btnSignIn").click();});
-$("#btnSignOut").addEventListener("click",async()=>{await sb.auth.signOut();});
+$("#btnSignOut").addEventListener("click",async()=>{try{localStorage.removeItem("stt.group");}catch(e){}await sb.auth.signOut();});
 $("#btnGroups").addEventListener("click",backToGroups);
 
 /* ---------- Groups ---------- */
-async function listGroups(){
+async function listGroups(autoOpenId){
   gmsg("");
   const {data,error}=await sb.from("groups").select("id,name,code,created_by,updated_at").order("updated_at",{ascending:false});
   const list=$("#groupList");
@@ -877,6 +883,13 @@ async function listGroups(){
     const {error}=await sb.from("groups").delete().eq("id",b.dataset.del);
     if(error){gmsg(error.message,true);return;}listGroups();
   }));
+
+  // restore the group the user last had open (e.g. after returning from a
+  // receipt/PDF tab that reloaded the app), so they don't land on this list
+  if(autoOpenId && (!currentGroup || currentGroup.id!==autoOpenId)){
+    const g=data.find(x=>x.id===autoOpenId);
+    if(g){openGroup(g);}
+  }
 }
 $("#btnCreateGroup").addEventListener("click",async()=>{
   const name=val("#newGroupName");if(!name){gmsg("Give the group a name.",true);return;}
@@ -1119,7 +1132,7 @@ async function viewReceipt(path){
   // then point it at the signed URL once we have it
   const win=window.open("","_blank");
   if(win){try{win.document.write('<title>Receipt</title><p style="font-family:sans-serif;padding:20px;color:#555">Loading receipt…</p>');}catch(e){}}
-  const {data,error}=await sb.storage.from("receipts").createSignedUrl(path,600);
+  const {data,error}=await sb.storage.from("receipts").createSignedUrl(path,3600);
   if(error||!data){toast("Could not load receipt");if(win)win.close();return;}
   if(win){win.location.href=data.signedUrl;}
   else{toast("Allow pop-ups to open the receipt in a new tab");}
@@ -1287,7 +1300,7 @@ $("#receiptRemove").addEventListener("click",()=>{
 async function loadReceiptThumb(path){
   if(!sb||!path)return;
   try{
-    const {data}=await sb.storage.from("receipts").createSignedUrl(path,300);
+    const {data}=await sb.storage.from("receipts").createSignedUrl(path,3600);
     if(data&&data.signedUrl)showReceiptPreview(data.signedUrl);
   }catch(e){}
 }
@@ -1768,5 +1781,4 @@ startGate();
 </script>
 </body>
 </html>
-
 
