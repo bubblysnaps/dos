@@ -586,11 +586,6 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- ===== Receipt lightbox ===== -->
-<div class="scrim" id="lightScrim" style="align-items:center">
-  <img id="lightImg" alt="receipt" style="max-width:92vw;max-height:88vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
-</div>
-
 <!-- ===== ADMIN: pending approvals ===== -->
 <div class="scrim" id="adminScrim">
   <div class="modal" role="dialog" aria-modal="true" style="max-width:480px">
@@ -1073,7 +1068,7 @@ function renderTxns(){
         <div class="row">
           <div class="txn-total"><div class="amt">${money(c.total)}</div><div class="lbl">total bill</div></div>
           <div class="log-actions no-print">
-            ${t.receipt?`<button class="btn sm" data-receipt="${esc(t.receipt)}" title="View receipt">🧾</button>`:""}
+            ${t.receipt?`<button class="btn sm" data-receipt="${esc(t.receipt)}" title="Open receipt in a new window">🧾 Receipt ↗</button>`:""}
             <button class="btn sm" data-share="${t.id}" title="Share summary">Share</button>
             <button class="btn sm" data-pdf="${t.id}" title="Save / print as PDF">PDF</button>
             <button class="btn ghost sm" onclick="openTxn('${t.id}')">Edit</button>
@@ -1120,13 +1115,15 @@ function renderTxns(){
 }
 async function viewReceipt(path){
   if(!sb||!path)return;
-  toast("Loading receipt…");
-  const {data,error}=await sb.storage.from("receipts").createSignedUrl(path,300);
-  if(error||!data){toast("Could not load receipt");return;}
-  $("#lightImg").src=data.signedUrl;
-  $("#lightScrim").classList.add("open");
+  // open the tab synchronously (inside the click) so pop-up blockers allow it,
+  // then point it at the signed URL once we have it
+  const win=window.open("","_blank");
+  if(win){try{win.document.write('<title>Receipt</title><p style="font-family:sans-serif;padding:20px;color:#555">Loading receipt…</p>');}catch(e){}}
+  const {data,error}=await sb.storage.from("receipts").createSignedUrl(path,600);
+  if(error||!data){toast("Could not load receipt");if(win)win.close();return;}
+  if(win){win.location.href=data.signedUrl;}
+  else{toast("Allow pop-ups to open the receipt in a new tab");}
 }
-$("#lightScrim").addEventListener("click",()=>{$("#lightScrim").classList.remove("open");$("#lightImg").src="";});
 function gotoSettle(id){
   const tabs=$$("nav.tabs button");
   tabs.forEach(x=>x.setAttribute("aria-selected",x.dataset.tab==="settle"?"true":"false"));
@@ -1685,6 +1682,7 @@ function renderSettle(){
           <span class="badge meal">${esc(t.meal||"—")}</span>
           <span class="txn-title" style="font-size:15px">${esc(t.place||"Dine-out")}</span>
           <span class="paidby">paid by <b>${esc(memberName(t.payerId))}</b> · service ${money(c.service)} · total ${money(c.total)}</span>
+          ${t.receipt?`<a class="btn sm no-print" data-receipt="${esc(t.receipt)}" title="Open receipt in a new window" style="margin-left:2px;text-decoration:none">🧾 Receipt ↗</a>`:""}
         </div>
         <div class="progress"><span>${done}/${debtors.length}</span><span class="bar"><i style="width:${pct}%"></i></span></div>
       </div>
@@ -1697,6 +1695,8 @@ function renderSettle(){
     </div>`;
   });
   $("#settleList").innerHTML=html;
+
+  $$("#settleList [data-receipt]").forEach(el=>el.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();viewReceipt(el.dataset.receipt);}));
 
   $$("#settleList .sb-head[data-toggle]").forEach(h=>h.addEventListener("click",e=>{
     if(e.target.closest("input,select,a"))return;
@@ -1768,4 +1768,5 @@ startGate();
 </script>
 </body>
 </html>
+
 
